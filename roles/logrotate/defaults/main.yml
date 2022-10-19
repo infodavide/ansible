@@ -1,0 +1,5 @@
+---
+# defaults file
+logrotate_rotate: 7
+logrotate_maxage: 62
+logrotate_size: 2M

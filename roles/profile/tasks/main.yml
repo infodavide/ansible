@@ -1,0 +1,100 @@
+---
+# tasks file
+#----------------------------------------------------------------------------------
+# locale <=========================================================================
+#----------------------------------------------------------------------------------
+- name: Setting default locale
+  lineinfile: 
+    path: /etc/locale.conf
+    regexp: "^LANG="
+    line: "LANG=\"{{locale}}\""
+  when: ansible_distribution_file_variety == "SUSE"
+  tags:
+    - profile
+    - locale
+
+- name: Enabling locale
+  shell: sed -i 's/^# *\({{locale}}.{{encoding}}\)/\1/' /etc/locale.gen
+  when: ansible_distribution == 'Debian'
+  args:
+    warn: no
+  tags:
+    - locale
+
+- name: Generating locales
+  when: ansible_distribution == 'Debian'
+  shell: locale-gen
+  args:
+    warn: no
+  tags:
+    - locale
+
+- name: Setting default locale
+  shell: localectl set-locale LANG={{locale}}
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+    - profile
+    - locale    
+
+- name: Setting default keymap
+  shell: localectl set-keymap fr
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+    - profile
+    - locale
+
+#----------------------------------------------------------------------------------
+# profile <=========================================================================
+#----------------------------------------------------------------------------------
+- name: Copying profile.local file
+  copy:
+    src: files/etc/profile.local
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - profile
+
+- name: Setting default history size
+  lineinfile: 
+    path: /etc/profile
+    regexp: "^HISTSIZE=.*"
+    line: "HISTSIZE=50"
+  tags:
+    - profile
+
+- name: Adding language settings to profile
+  lineinfile: 
+    path: /etc/profile 
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+    create: yes
+  with_items:
+    - { regexp: '^export\s*LANG=', line: 'export LANG={{locale}}' }
+    - { regexp: '^export\s*LANGUAGE=', line: 'export LANGUAGE={{locale}}' }
+    - { regexp: '^export\s*LC_ALL=', line: 'export LC_ALL={{locale}}' }
+  tags:
+    - profile
+
+- name: Reconfigure time zone
+  shell: timedatectl set-timezone Etc/UTC
+  when: ansible_distribution == 'Debian'
+  tags:
+    - profile
+
+- name: Update time zone to Etc/UTC
+  copy: content="Etc/UTC\n" dest=/etc/timezone owner=root group=root mode=0644
+  register: timezone
+  tags:
+    - profile
+
+- name: Reconfigure time zone (if changed)
+  shell: dpkg-reconfigure -f noninteractive tzdata
+  when: ansible_distribution == 'Debian' and timezone.changed
+  tags:
+    - profile

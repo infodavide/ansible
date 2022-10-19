@@ -1,0 +1,26 @@
+---
+# tasks file
+#----------------------------------------------------------------------------------
+# users <=========================================================================
+#----------------------------------------------------------------------------------
+- name: Creating users
+  user: 
+    name: "{{item.name}}"
+    groups: "{{item.group}}"
+    password: "{{item.password}}"
+    home: "{{item.home}}"
+    state: present
+    createhome: yes
+    append: yes
+  with_items: "{{users}}"
+  tags:
+    - users
+
+- name: Updating permissions on homes
+  file:
+    path: "{{item.home}}"
+    mode: u+rwX,g-rwx,o-rwx
+    recurse: yes
+  with_items: "{{users}}"
+  tags:
+    - users

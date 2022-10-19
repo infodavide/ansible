@@ -1,0 +1,5 @@
+---
+# defaults file
+firewall:
+firewall_items:
+  - { port: 22, proto: tcp }

@@ -1,0 +1,317 @@
+---
+# tasks file
+#----------------------------------------------------------------------------------
+# firewall <=======================================================================
+#----------------------------------------------------------------------------------
+- name: Copying admin directory
+  copy:
+    src: files/etc/admin
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0660
+  tags:
+    - firewall
+
+- name: Updating permissions on admin directory
+  shell: chmod 770 /etc/admin/*.sh
+  args:
+    warn: no
+  tags:
+    - firewall
+    
+- name: Creating symbolic link for firehol task
+  file:
+    src: "/etc/admin/firehol.sh"
+    dest: "/etc/cron.weekly/firehol.sh"
+    state: link
+  tags:
+    - firewall
+
+- name: Creating symbolic link for ipblock task
+  file:
+    src: "/etc/admin/ipblock.sh"
+    dest: "/etc/cron.weekly/ipblock.sh"
+    state: link
+  tags:
+    - firewall
+
+- name: Installing firewalld package
+  package: name={{item}} state=present
+  with_items:
+    - firewalld
+  notify: cleaning_packages_metadata
+  when: firewall == "firewalld"
+  tags:
+    - firewall
+
+- name: Enabling firewall service
+  systemd: enabled=yes state=started daemon_reload=yes name=firewalld
+  tags:
+    - firewall
+  when: firewall == "firewalld"
+
+- name: Setting firewall rules (firewalld)
+  shell: firewall-cmd --permanent --zone=public --add-port={{item.port}}/{{item.proto}}
+  args:
+    warn: no
+  with_items: "{{firewall_items}}"
+  when: firewall == "firewalld"
+  tags:
+    - firewall
+
+- name: Allow multicast traffic (firewalld)
+  shell: firewall-cmd --permanent --add-service=samba && firewall-cmd --permanent --add-protocol=igmp && firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 10 -d 239.255.255.250 -j ACCEPT && firewall-cmd --reload
+  when: firewall == "firewalld"
+  tags:
+    - firewall
+
+- name: Installing iptables package
+  package: name={{item}} state=present
+  with_items:
+    - iptables
+  notify: cleaning_packages_metadata
+  when: firewall == "iptables"
+  tags:
+    - firewall
+
+- name: Enabling firewall service
+  systemd: enabled=yes state=started daemon_reload=yes name=iptables
+  tags:
+    - firewall
+  when: firewall == "iptables"
+
+- name: Setting firewall rules (iptables)
+  shell: if [[ $(/sbin/iptables -L|grep dpt:{{item.port}}|wc -l) -eq "0" ]]; then /sbin/iptables -I INPUT -p {{item.proto}} --dport {{item.port}} -j ACCEPT && /sbin/service iptables save; fi
+  with_items: "{{firewall_items}}"
+  when: firewall == "iptables"
+  tags:
+    - firewall
+
+- name: Installing ufw package
+  package: name={{item}} state=present
+  with_items:
+    - iptables
+    - ufw
+  notify: cleaning_packages_metadata
+  when: firewall == "ufw"
+  tags:
+    - firewall
+
+- name: Enabling firewall service
+  systemd: enabled=yes state=started daemon_reload=yes name=ufw
+  tags:
+    - firewall
+  when: firewall == "ufw"
+
+- name: Setting ufw rules on public zone
+  shell: ufw allow {{item.port}}/{{item.proto}}
+  args:
+    warn: no
+  with_items: "{{firewall_items}}"
+  when: firewall == "ufw"
+  tags:
+    - firewall
+
+- name: Enabling firewall service
+  systemd: enabled=yes state=restarted daemon_reload=yes name=firewalld
+  tags:
+    - firewall
+  when: firewall == "firewalld"
+
+- name: Enabling firewall service
+  systemd: enabled=yes state=restarted daemon_reload=yes name=ufw
+  tags:
+    - firewall
+  when: firewall == "ufw"
+
+- name: Enabling firewall service
+  systemd: enabled=yes state=restarted daemon_reload=yes name=iptables
+  tags:
+    - firewall
+  when: firewall == "iptables"
+
+#----------------------------------------------------------------------------------
+# security <=======================================================================
+#----------------------------------------------------------------------------------
+- name: Installing security packages
+  package: name={{item}} state=present
+  with_items:
+    - fail2ban
+    - sshguard
+    - rkhunter
+    - aide
+  notify: cleaning_packages_metadata
+  tags:
+    - security
+    - firewall
+
+- name: Installing security packages
+  package: name={{item}} state=present
+  with_items:
+    - ca-certificates-cacert
+    - logdigest
+  notify: cleaning_packages_metadata
+  when: ansible_distribution_file_variety == "SUSE"
+  tags:
+    - security
+    - firewall
+
+- name: Installing security packages
+  package: name={{item}} state=present
+  with_items:
+    - ca-certificates
+    - logcheck
+  notify: cleaning_packages_metadata
+  when: ansible_distribution == 'Debian'
+  tags:
+    - security
+    - firewall
+
+- name: Copying fail2ban configuration
+  copy:
+    src: files/etc/fail2ban
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - security
+    - firewall
+
+- name: Setting sshguard configuration
+  lineinfile:
+    path: /etc/sshguard/sshguard.conf
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: '^THRESHOLD.*$', line: 'THRESHOLD=10' }
+    - { regexp: '^BLOCK_TIME.*$', line: 'BLOCK_TIME=900' }
+  tags:
+    - security
+    - firewall
+
+- name: Checking if sshguard backend library exists in /usr/lib
+  stat:
+    path: /usr/lib/sshg-fw-{{firewall}}
+  register: sshg_lib_result
+  tags:
+    - security
+    - firewall
+
+- name: Checking if sshguard backend library exists in /usr/libexec
+  stat:
+    path: /usr/libexec/sshg-fw-{{firewall}}
+  register: sshg_libexec_result
+  tags:
+    - security
+    - firewall
+  
+- name: Setting sshguard backend configuration 
+  lineinfile:
+    path: /etc/sshguard.conf
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: '^BACKEND.*$', line: 'BACKEND="/usr/lib/sshg-fw-{{firewall}}"' }
+  when: sshg_lib_result.stat.exists
+  tags:
+    - security
+    - firewall
+
+- name: Setting sshguard backend configuration
+  lineinfile:
+    path: /etc/sshguard.conf
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: '^BACKEND.*$', line: 'BACKEND="/usr/libexec/sshg-fw-{{firewall}}"' }
+  when: sshg_libexec_result.stat.exists
+  tags:
+    - security
+    - firewall
+
+- name: Setting fail2ban configuration
+  lineinfile:
+    path: /etc/fail2ban/fail2ban.conf
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: '^dbpurgeage.*$', line: 'dbpurgeage = 7d' }
+  tags:
+    - security
+    - firewall
+
+- name: Copying logdigest configuration
+  copy:
+    src: files/etc/logdigest
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  when: ansible_distribution_file_variety == "SUSE"
+  tags:
+    - security
+    - firewall
+
+- name: Copying logcheck configuration
+  copy:
+    src: files/etc/logcheck
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  when: ansible_distribution == 'Debian'
+  tags:
+    - security
+    - firewall
+
+- name: Updating rkhunter
+  shell: rkhunter -q --update
+  ignore_errors: True
+  tags:
+    - security
+    - firewall
+    
+- name: Configuring aide
+  shell: aideinit && cp /var/lib/aide/aide.db{.new,} && update-aide.conf && cp /var/lib/aide/aide.conf.autogenerated /etc/aide/aide.conf
+  ignore_errors: True
+  tags:
+    - security
+    - firewall
+
+- name: Copying gnupg configuration
+  copy:
+    src: files/etc/gnupg
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - security
+    - firewall
+
+- name: Checking if aide configuration file exists in /etc/default
+  stat:
+    path: /etc/default/aide
+  register: etc_default_aide_result
+  tags:
+    - security
+    - firewall
+
+- name: Setting aide configuration
+  lineinfile:
+    path: /etc/default/aide
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: '^MAILTO.*$', line: 'MAILTO={{email}}' }
+  when: etc_default_aide_result.stat.exists
+  tags:
+    - security
+    - firewall

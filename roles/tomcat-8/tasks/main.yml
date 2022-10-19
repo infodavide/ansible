@@ -1,0 +1,298 @@
+---
+# tasks file for tomcat-8
+#----------------------------------------------------------------------------------
+# repositories and packages <======================================================
+#----------------------------------------------------------------------------------
+- name: Installing packages
+  package: name={{item}} state=present
+  with_items:
+    - curl
+    - wget
+    - unzip
+    - zip
+    - java-1.8.0-openjdk-devel
+    - nginx
+  tags:
+    - packages
+
+#----------------------------------------------------------------------------------
+# Tomcat install <==============================================================
+#----------------------------------------------------------------------------------
+- name: Ensuring the Tomcat service is stopped
+  service: name=tomcat state=stopped
+  ignore_errors: True
+  tags:
+    - always
+
+- name: Checking if Tomcat zip exists
+  stat:
+    path: /tmp/{{tomcat_zip_file}}
+  register: zip_stat_result
+  tags:
+    - packages
+
+- name: Downloading Tomcat
+  shell: cd /tmp && wget {{tomcat_download_url}}
+  args:
+    warn: no
+  when: zip_stat_result.stat.exists == False
+  tags:
+    - packages
+
+- name: Removing existing directory
+  file:
+    path: "/opt/tomcat-{{tomcat_version}}"
+    state: absent
+  tags:
+    - packages
+
+- name: Removing existing symbolic
+  file:
+    path: "/opt/tomcat"
+    state: absent
+  tags:
+    - packages
+
+- name: Remove existing Tomcat user
+  user: 
+    name: tomcat
+    state: absent
+    remove: yes
+  tags:
+    - configuration
+
+- name: Extracting zip
+  unarchive:
+    copy: no
+    src: "/tmp/{{tomcat_zip_file}}"
+    dest: /opt
+  tags:
+    - packages
+
+- name: Removing unused files
+  shell: "rm -fr {{item}}"
+  args:
+    warn: no
+  with_items:
+    - "/opt/tomcat/webapps/examples"
+    - "/opt/tomcat/bin/*.bat"
+  tags:
+    - configuration
+
+- name: Creating symbolic link to Tomcat release
+  file:
+    src: "/opt/apache-tomcat-{{tomcat_version}}"
+    dest: "/opt/tomcat"
+    state: link
+  tags:
+    - configuration
+
+- name: Creating Tomcat group
+  group: 
+    name: tomcat
+  tags:
+    - configuration
+
+- name: Creating Tomcat user
+  user: 
+    name: tomcat
+    groups: daemon,tomcat
+    system: yes
+    home: /opt/tomcat
+    append: yes
+  tags:
+    - configuration
+
+- name: Creating logs directory in /var/log
+  file:
+    path: "/var/log/tomcat"
+    owner: tomcat
+    group: tomcat
+    state: directory
+  tags:
+    - configuration
+
+- name: Removing relative logs directory
+  file:
+    path: "/opt/tomcat/logs"
+    state: absent
+  tags:
+    - configuration
+
+- name: Creating symbolic link to Tomcat logs
+  file:
+    src: "/var/log/tomcat"
+    dest: "/opt/tomcat/logs"
+    state: link
+  tags:
+    - configuration
+
+- name: Removing Tomcat temporary directory
+  file:
+    path: "/opt/tomcat/temp"
+    state: absent
+  tags:
+    - configuration
+
+- name: Creating symbolic link to Tomcat temporary folder
+  file:
+    src: "/tmp"
+    dest: "/opt/tomcat/temp"
+    state: link
+  tags:
+    - configuration
+
+- name: Creating applications folder
+  file:
+    path: "/opt/tomcat/applications"
+    owner: tomcat
+    group: tomcat
+    state: directory
+  tags:
+    - configuration
+
+- name: Configuring Tomcat environment
+  template: src=setenv.sh.j2 dest=/opt/tomcat/bin/setenv.sh owner=tomcat group=tomcat
+  tags:
+    - configuration
+
+- name: Configuring Tomcat users
+  template: src=tomcat-users.xml.j2 dest=/opt/tomcat/conf/tomcat-users.xml owner=tomcat group=tomcat
+  tags:
+    - configuration
+
+- name: Configuring Tomcat logs
+  template: src=logging.properties.j2 dest=/opt/tomcat/conf/logging.properties owner=tomcat group=tomcat
+  tags:
+    - configuration
+
+- name: Configuring Tomcat service
+  template: src=server.xml.j2 dest=/opt/tomcat/conf/server.xml owner=tomcat group=tomcat
+  tags:
+    - configuration
+
+- name: Copying Tomcat service file
+  copy:
+    src: files/etc/systemd/system/tomcat.service
+    dest: /etc/systemd/system/
+    owner: root
+    group: root
+    mode: 0644
+  tags:
+    - configuration
+
+- name: Copying custom files
+  copy:
+    src: files/opt/tomcat
+    dest: /opt/
+    owner: tomcat
+    group: tomcat
+    mode: 0664
+  tags:
+    - configuration
+
+- name: Adding cron tasks
+  cron: 
+    name: "Logrotate"
+    user: "tomcat"
+    minute: "0"
+    hour: "01"
+    job: "/opt/tomcat/cron_logrotate.sh"
+  tags:
+    - configuration
+
+- name: Copying Nginx proxy file
+  copy:
+    src: files/etc/nginx/conf.d/tomcat-proxy.conf
+    dest: /etc/nginx/conf.d/
+    owner: nginx
+    group: nginx
+    mode: 0644
+  tags:
+    - configuration
+
+- name: Copying Nginx configuration file
+  copy:
+    src: files/etc/nginx/nginx.conf
+    dest: /etc/nginx/
+    owner: nginx
+    group: nginx
+    mode: 0644
+  tags:
+    - configuration
+
+- name: Setting owner and permissions on Tomcat directory
+  shell: bash /opt/tomcat/clean.sh
+  args:
+    warn: no
+  tags:
+    - configuration
+
+- name: Copying Tomcat webapps
+  copy:
+    src: "{{item.path}}"
+    dest: "/opt/tomcat/applications/{{item.war}}"
+    owner: tomcat
+    group: tomcat
+  with_items: "{{tomcat_webapps}}"
+  tags:
+    - configuration
+
+- name: Configuring Tomcat webapps
+  template: src=application.xml.j2 dest=/opt/tomcat/conf/Catalina/localhost/{{item.name}}.xml owner=tomcat group=tomcat
+  with_items: "{{tomcat_webapps}}"
+  tags:
+    - configuration
+
+- name: Removing Tomcat examples
+  file:
+    path: /opt/tomcat/webapps/examples
+    state: absent
+  tags:
+    - configuration
+
+- name: Removing Tomcat docs
+  file:
+    path: /opt/tomcat/webapps/docs
+    state: absent
+  tags:
+    - configuration
+
+- name: Removing Tomcat work directory
+  file:
+    path: /opt/tomcat/work
+    state: absent
+  tags:
+    - configuration
+
+- name: Removing zip
+  shell: "rm -f /tmp/{{tomcat_zip_file}}"
+  args:
+    warn: no
+  tags:
+    - packages
+
+#----------------------------------------------------------------------------------
+# firewall <=======================================================================
+#----------------------------------------------------------------------------------
+- name: Setting firewall rules
+  lineinfile:
+    path: /etc/sysconfig/iptables
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+    insertbefore: '^-A\sINPUT\s-j\sREJECT'
+  with_items:
+    - { regexp: '^.*-p\stcp.*--dport\s80', line: '-A INPUT -p tcp --dport 80 -j ACCEPT -m comment --comment "http tomcat"' }
+    - { regexp: '^.*-p\stcp.*--dport\s443', line: '-A INPUT -p tcp --dport 443 -j ACCEPT -m comment --comment "https tomcat"' }
+  tags:
+    - configuration
+
+- name: Enabling and restart services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+    - tomcat
+    - nginx
+    - iptables
+  tags:
+    - always

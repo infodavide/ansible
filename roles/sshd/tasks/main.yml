@@ -1,0 +1,26 @@
+---
+# tasks file
+#----------------------------------------------------------------------------------
+# ssh settings <===================================================================
+#----------------------------------------------------------------------------------
+- name: Setting sshd configuration
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: '^AllowTcpForwarding.*$', line: 'AllowTcpForwarding yes' }
+    - { regexp: '^PermitTunnel.*$', line: 'PermitTunnel yes' }
+    - { regexp: '^PermitRootLogin.*$', line: 'PermitRootLogin no' }
+    - { regexp: '^#Port.*$', line: 'Port {{ssh_port}}' }
+    - { regexp: '^Port.*$', line: 'Port {{ssh_port}}' }
+  tags:
+    - ssh
+
+- name: Enabling and restart services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+    - sshd
+  tags:
+    - ssh

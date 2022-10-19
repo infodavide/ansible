@@ -1,0 +1,2 @@
+\w{3} [ :0-9]{11} [._[:alnum:]-]+ sshguard\[[0-9]+\]: Attack from.*
+\w{3} [ :0-9]{11} [._[:alnum:]-]+ sshguard\[[0-9]+\]: Blocking.*

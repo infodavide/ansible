@@ -1,0 +1,19 @@
+
+# /etc/logdigest/logdigest.conf -- site local configuration for logdigest
+# it's sourced from logdigest.sh
+
+# logfiles to examine
+LOGFILES="/var/log/messages /var/log/mail /var/log/audit/audit.log"
+
+# person to send log activity to.
+# put the email address here. Multiple addressess are allowed:
+#
+# SYSADMIN="root me@my.home.example.com"
+#
+SYSADMIN=contact@infodavid.org
+
+# shouldn't need to touch this...
+HOSTNAME=
+
+# include some status report (disks, network devices, mail queue, ...)
+EXTENDED_STATS=no
