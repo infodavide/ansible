@@ -1,6 +1,0 @@
----
-# array of slaves (name, user, password)
-databases: []
-# array of slaves (database, name)
-extensions: []
-db_data_dir: /var/lib/pgsql/10/data

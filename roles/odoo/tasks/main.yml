@@ -1,0 +1,312 @@
+---
+- import_tasks: create-user.yml
+
+- name: Install system packages
+  package: name={{item}} state=present
+  with_items:
+    - build-essential
+    - python3-dev
+    - python3-setuptools
+    - libxml2
+    - libxml2-dev
+    - libxslt1-dev
+    - libssl-dev
+    - libldap2-dev
+    - libsasl2-dev
+    - git
+    - libmagic-dev
+
+- name: Install libjpeg-dev
+  package: name={{item}} state=present
+  with_items:
+    - libjpeg-dev
+  when: odoo_version < "13.0"
+
+- name: Check if wkhtmltopdf is installed
+  shell: set -o pipefail && dpkg -s wkhtmltox | grep 'install ok installed'
+  args:
+    executable: /bin/bash
+  register: wkhtmltox_installed
+  failed_when: false
+  changed_when: no
+
+- name: Download and install wkhtmltopdf only if not already present at any version
+  apt:
+    deb: "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.{{ansible_distribution_release}}_amd64.deb"
+  when: wkhtmltox_installed.rc == 1
+
+- import_tasks: pyenv.yml
+  become: true
+
+- import_tasks: environment_variables.yml
+  become: true
+  when: environment_variables is defined
+
+- name: Create Odoo directories
+  become: true
+  file:
+    path: "{{item}}"
+    state: directory
+    owner: "{{odoo_user}}"
+    group: "{{odoo_group}}"
+    mode: 02775
+  loop:
+    - "{{odoo_path}}"
+    - "{{odoo_config_path}}"
+    - "{{odoo_modules_path}}"
+
+- name: Create log dir
+  become: true
+  file:
+    path: "{{odoo_log_path}}"
+    state: directory
+    group: "{{odoo_group}}"
+    mode: 02775
+
+- name: Create log file
+  become: true
+  file:
+    path: "{{odoo_log_path}}/odoo.log"
+    group: "{{odoo_group}}"
+    state: touch
+    mode: 02775
+
+- import_tasks: download.yml
+
+- name: Add Python Magic to requirements
+  become: true
+  become_user: "{{odoo_user}}"
+  lineinfile:
+    path: "{{odoo_path}}/requirements.txt"
+    line: python-magic
+
+- name: Install Odoo python requirements
+  become: true
+  become_user: "{{odoo_user}}"
+  pip:
+    requirements: "{{odoo_path}}/requirements.txt"
+    virtualenv: "{{odoo_venv_path}}"
+
+- name: Install nodejs packages
+  package: name={{item}} state=present
+  with_items:
+    - nodejs
+    - npm
+  when: odoo_version < "12.0"
+
+- name: Install Less CSS via nodejs
+  become: true
+  npm:
+    name: less
+    version: 2.7.2
+    global: yes
+  when: odoo_version < "12.0"
+
+# This link is needed in Ubuntu 16.04 and in Ubuntu 18.04 raise an error.
+- name: Create node symlink
+  become: true
+  file:
+    src: /usr/bin/nodejs
+    dest: /usr/bin/node
+    state: link
+  when: odoo_version < "12.0" and ansible_distribution == "Ubuntu" and not ansible_distribution_version >= "18.04"
+
+- name: Install Odoo
+  become: true
+  become_user: "{{odoo_user}}"
+  shell: "cd {{odoo_path}} && {{odoo_python_path}} setup.py install"
+  when: desired_tar_download.changed or desired_git_download.changed
+
+- name: Add Odoo config
+  become: true
+  template:
+    src: odoo.conf.j2
+    dest: "{{odoo_config_path}}/odoo.conf"
+    mode: 0774
+    owner: "{{odoo_user}}"
+    group: "{{ odoo_group}}"
+  notify: restart odoo
+
+- name: Check if Odoo database has been initialized ("0" false, "1" true)
+  become: true
+  become_user: "{{odoo_user}}"
+  shell: >
+    psql {{item}} -tAc
+    "SELECT COUNT(*)
+    FROM information_schema.tables
+    WHERE table_name='ir_module_module';"
+  register: db_initialized
+  with_items: "{{odoo_dbs}}"
+  changed_when: false
+
+- name: "Init Odoo database(s): {{odoo_dbs}}"
+  become: true
+  become_user: "{{odoo_user}}"
+  command: >
+    {{odoo_python_path}} {{odoo_bin_path}}
+    -c {{odoo_config_path}}/odoo.conf
+    -d {{item}}
+    --init base
+    --stop-after-init
+    {% if not demo_data %}
+    --without-demo=all
+    {% endif %}
+    --logfile=/dev/stdout
+    --log-level=warn
+  when: db_initialized.results[index].stdout == "0"
+  notify: restart odoo
+  with_items: "{{odoo_dbs}}"
+  loop_control:
+    index_var: index
+
+- import_tasks: community-modules.yml
+
+- name: Populate community db modules
+  set_fact:
+    community_db_modules: "{{community_db_modules | default({}) | combine ({ item : odoo_community_modules_dict[item] | default([]) })}}"
+  with_items: "{{odoo_dbs}}"
+
+- name: Populate community shared modules
+  set_fact:
+    community_shared_modules: "{{odoo_community_modules_dict['shared'] | default(odoo_community_modules.split(','))}}"
+
+- name: Join db + shared community modules
+  set_fact:
+    community_modules: "{{community_modules | default({}) | combine ({ item : community_shared_modules + community_db_modules[item] })}}"
+  with_items: "{{odoo_dbs}}"
+
+- name: Populate core db modules
+  set_fact:
+    core_db_modules: "{{core_db_modules | default({}) | combine ({ item : odoo_core_modules_dict[item] | default([]) })}}"
+  with_items: "{{odoo_dbs}}"
+
+- name: Populate core shared modules
+  set_fact:
+    core_shared_modules: "{{odoo_core_modules_dict['shared'] | default(odoo_core_modules.split(','))}}"
+
+- name: Join db + shared core modules
+  set_fact:
+    core_modules: "{{core_modules | default({}) | combine ({ item : core_shared_modules + core_db_modules[item] })}}"
+  with_items: "{{odoo_dbs}}"
+
+- name: Force update odoo modules
+  become: true
+  become_user: "{{odoo_user}}"
+  environment: "{{environment_variables | default({})}}"
+  command: >
+    {{odoo_python_path}} {{odoo_bin_path}}
+    -c {{odoo_config_path}}/odoo.conf
+    -d {{item}}
+    --update {{modules_force_update | join(',')}}
+    --stop-after-init
+    --logfile=/dev/stdout
+    --log-level=warn
+    --no-http
+  when: modules_force_update is defined
+  with_items: "{{odoo_dbs}}"
+  notify:
+    - restart odoo
+    - remove sessions
+
+- name: Update in Odoo pip upgraded community modules
+  become: true
+  become_user: "{{odoo_user}}"
+  environment: "{{environment_variables | default({})}}"
+  command: >
+    {{odoo_python_path}} {{odoo_bin_path}}
+    -c {{odoo_config_path}}/odoo.conf
+    -d {{item}}
+    --update {{reg_pip_upgraded.stdout_lines | join(',')}}
+    --stop-after-init
+    --logfile=/dev/stdout
+    --log-level=warn
+    --no-http
+  when: requirements_txt_result.stat.exists and reg_pip_upgraded.stdout
+  with_items: "{{odoo_dbs}}"
+  notify:
+    - restart odoo
+    - remove sessions
+
+- name: Build the list of new modules to install
+  become: true
+  become_user: "{{odoo_user}}"
+  shell: >
+    psql {{item}} -tAc
+    "SELECT name
+    FROM (VALUES ('{{(core_modules[item] + community_modules[item]) | join(separator)}}'))
+    AS t (name)
+    EXCEPT
+    SELECT name
+    FROM ir_module_module
+    WHERE state = 'installed';"
+  register: modules_to_install
+  vars:
+    - separator: "'), ('"
+  with_items: "{{odoo_dbs}}"
+  changed_when: false
+
+- name: Install only new Odoo modules
+  become: true
+  become_user: "{{odoo_user}}"
+  environment: "{{environment_variables | default({})}}"
+  command: >
+    {{odoo_python_path}} {{odoo_bin_path}}
+    -c {{odoo_config_path}}/odoo.conf
+    -d {{item}}
+    --init {{modules_to_install.results[index].stdout_lines | join(',')}}
+    --stop-after-init
+    {% if not demo_data %}
+    --without-demo=all
+    {% endif %}
+    --logfile=/dev/stdout
+    --log-level=warn
+    --no-http
+  when: modules_to_install.results[index].stdout
+  with_items: "{{odoo_dbs}}"
+  loop_control:
+    index_var: index
+  notify:
+    - restart odoo
+    - remove sessions
+
+- name: Set ribbon name for test dbs
+  become: true
+  become_user: "{{odoo_user}}"
+  command: >
+    psql
+    -d {{item}}
+    -c "UPDATE ir_config_parameter set value = 'TEST<br/>({db_name})' where key = 'ribbon.name'"
+  when:
+    - item in test_dbs and "web_environment_ribbon" in community_modules[item]
+  with_items: "{{odoo_dbs}}"
+  notify: restart odoo
+
+- name: Disable ribbon name for prod dbs
+  become: true
+  become_user: "{{odoo_user}}"
+  command: >
+    psql
+    -d {{item}}
+    -c "UPDATE ir_config_parameter set value = 'False' where key = 'ribbon.name'"
+  when:
+    - item not in test_dbs and "web_environment_ribbon" in community_modules[item]
+  with_items: "{{odoo_dbs}}"
+  notify: restart odoo
+
+- name: Install development environment pip packages
+  become: true
+  become_user: "{{odoo_user}}"
+  pip:
+    name: "{{item}}"
+    virtualenv: "{{odoo_venv_path}}"
+  when: dev_mode | bool
+  with_items:
+    - pytest
+    - pytest-odoo
+    - coverage
+    - watchdog
+
+- import_tasks: add-service.yml
+  when: not dev_mode | bool
+
+- import_tasks: logrotate.yml

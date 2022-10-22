@@ -1,0 +1,21 @@
+---
+# handlers file for odoo
+- name: restart odoo
+  service:
+    name: "{{odoo_daemon}}"
+    state: restarted
+  when: not dev_mode | bool
+
+- name: remove sessions
+  file:
+    state: "{{item}}"
+    path: "{{odoo_sessions_path}}"
+    owner: "{{odoo_user}}"
+    group:  "{{odoo_group}}"
+    mode: '0775'
+  with_items:
+    - absent
+    - directory
+  when:
+    - not dev_mode | bool
+    - remove_sessions | bool

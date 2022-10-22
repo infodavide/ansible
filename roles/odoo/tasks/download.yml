@@ -1,0 +1,85 @@
+---
+# Odoo release packed in a compressed file supported by gtar or unzip
+- name: Download an Odoo release tar packet
+  block:
+  - name: Ensure download path exists
+    file:
+      path: "{{odoo_download_path | dirname}}"
+      state: directory
+      owner: "{{odoo_user}}"
+      group: "{{odoo_group}}"
+      mode: 0755
+
+  - name: Download Odoo
+    get_url:
+      url: "{{odoo_url}}"
+      dest: "{{odoo_download_path}}"
+      owner: "{{odoo_user}}"
+      group: "{{odoo_group}}"
+    register: desired_tar_download
+
+  - name: Clean older release packets
+    vars:
+      dirname: "{{odoo_download_path | dirname}}"
+      basename: "{{odoo_download_path | basename}}"
+    # Find under download path dir, all elements of type file, such that
+    # they don't have a name that it's the one of the file we just downloaded.
+    # For each match, delete it and print it's path, so that
+    # we can tell from the output wether anything got found-deleted or not.
+    command: "find {{dirname}} -type f -not -name '{{basename}}' -delete -print"
+    register: find
+    changed_when: find.stdout != ""
+
+  - name: Clean target directory
+    file:
+      path: "{{odoo_path}}"
+      state: "{{item}}"
+      owner: "{{odoo_user}}"
+      group: "{{odoo_group}}"
+      mode: 02775
+    with_items:
+      - absent
+      - directory
+    when: desired_tar_download.changed
+
+  - name: Uncompress downloaded Odoo
+    unarchive:
+      src: "{{odoo_download_path}}"
+      dest: "{{odoo_path}}"
+      remote_src: yes
+      owner: "{{odoo_user}}"
+      group: "{{odoo_group}}"
+      mode: 0775
+      extra_opts: [--strip-components=1]
+    when: desired_tar_download.changed
+  when: download_strategy == "tar"
+
+
+- name: Removing temporary directory
+  file: 
+    path: /tmp/odoo_git
+    state: absent
+  when: download_strategy == "git"
+  
+# Odoo from the OCA/OCB repository: https://github.com/OCA/OCB
+- name: "Git clone git reference {{odoo_git_ref}}"
+  become: yes
+  become_user: "{{odoo_user}}"
+  git:
+    repo: "{{odoo_git_url}}"
+    dest: "/tmp/odoo_git"
+    version: "{{odoo_git_ref}}"
+    depth: 1
+    force: yes
+  register: desired_git_download
+  when: download_strategy == "git"
+
+- name: Copying downloaded content
+  shell: cp -rfp /tmp/odoo_git/* "{{odoo_path}}"
+  when: download_strategy == "git"
+
+- name: Removing temporary directory
+  file: 
+    path: /tmp/odoo_git
+    state: absent
+  when: download_strategy == "git"

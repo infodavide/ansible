@@ -1,0 +1,90 @@
+---
+- name: Ensure apt cache is up to date
+  become: true
+  apt:
+    update_cache: yes
+    cache_valid_time: "{{48 * 60 * 60}}"  # consider the cache to be valid within 48 hours
+
+- name: Install development packages necessary for building Python
+  become: true
+  apt:
+    pkg:
+      - build-essential
+      - git
+      - curl
+      - libssl-dev
+      - libbz2-dev
+      - libsqlite3-dev
+      - libreadline-dev
+      - zlib1g-dev
+      - wget
+      - llvm
+      - libncurses5-dev
+      - xz-utils
+      - tk-dev
+      - libxml2-dev
+      - libxmlsec1-dev
+      - libffi-dev
+      - cargo
+    state: present
+
+- name: Install PyEnv
+  become: true
+  become_user: "{{odoo_user}}"
+  git:
+    repo: https://github.com/pyenv/pyenv.git
+    dest: "/opt/{{odoo_user}}/pyenv"
+    update: no
+
+- name: Install PyEnv-virtualenv plugin
+  become: true
+  become_user: "{{odoo_user}}"
+  git:
+    repo: https://github.com/yyuu/pyenv-virtualenv.git
+    dest: "/opt/{{odoo_user}}/pyenv/plugins/pyenv-virtualenv"
+    update: no
+
+- name: Install PyEnv-update plugin
+  become: true
+  become_user: "{{odoo_user}}"
+  git:
+    repo: https://github.com/pyenv/pyenv-update.git
+    dest: "/opt/{{odoo_user}}/pyenv/plugins/pyenv-update"
+    update: no
+
+- name: Install .pyenvrc
+  become: true
+  become_user: "{{odoo_user}}"
+  template:
+    src: "pyenvrc.j2"
+    dest: "/opt/{{odoo_user}}/pyenv/.pyenvrc"
+    mode: 0644
+
+- name: "Load pyenv env variables in .bashrc"
+  become: true
+  become_user: "{{odoo_user}}"
+  lineinfile: dest="/opt/{{odoo_user}}/.bashrc"
+              regexp="\.pyenvrc$"
+              line="source /opt/{{odoo_user}}/pyenv/.pyenvrc"
+              state=present
+              create=yes
+              mode="0644"
+
+- name: Update Pyenv interpreter list
+  become: true
+  become_user: "{{odoo_user}}"
+  shell: . /opt/{{odoo_user}}/pyenv/.pyenvrc && pyenv update
+
+- name: "Install Python interpreter {{python_version}}"
+  become: true
+  become_user: "{{odoo_user}}"
+  shell: . /opt/{{odoo_user}}/pyenv/.pyenvrc && pyenv install {{python_version}}
+  args:
+    creates: "/opt/{{odoo_user}}/pyenv/versions/{{python_version}}/bin/python"
+
+- name: "Create virtual environment {{venv_name}}"
+  become: true
+  become_user: "{{odoo_user}}"
+  shell: . /opt/{{odoo_user}}/pyenv/.pyenvrc && pyenv virtualenv {{python_version }} {{venv_name}}
+  args:
+    creates: "/opt/{{odoo_user}}/pyenv/versions/{{venv_name}}/bin/python"

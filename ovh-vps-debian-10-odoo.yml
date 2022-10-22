@@ -21,4 +21,5 @@
     - role: firewall
     - role: cron
     - role: ovh-vps-debian-10
+    - role: postgresql
     - role: sshd

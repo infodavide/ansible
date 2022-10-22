@@ -1,0 +1,6 @@
+---
+db_data_dir: /var/lib/postgresql/data
+# array of items (name, user, password)
+databases: []
+# array of items (database, name)
+extensions: []

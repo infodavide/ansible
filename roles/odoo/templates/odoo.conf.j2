@@ -1,0 +1,73 @@
+[options]
+; Log Settings
+{% if not dev_mode %}
+logfile = {{odoo_log_path}}/odoo.log
+{% endif %}
+log_level = {{odoo_log_level}}
+{% if enable_queue_job and not enable_dbfilter_from_header %}
+server_wide_modules = web,queue_job
+{% elif not enable_queue_job and enable_dbfilter_from_header %}
+server_wide_modules = web,dbfilter_from_header
+{% elif enable_queue_job and enable_dbfilter_from_header %}
+server_wide_modules = web,dbfilter_from_header,queue_job
+{% endif %}
+; Custom Modules
+addons_path = {{odoo_modules_path}}, {{odoo_path}}/addons
+
+; Master password to manage dbs
+admin_passwd = {{odoo_db_admin_password}}
+
+; HTTP server settings
+http_interface = {{odoo_http_interface}}
+proxy_mode = {{odoo_proxy_mode}}
+
+{% if force_leftmost_subdomain or (not enable_dbfilter_from_header and ( odoo_dbs | count ) > 1 and dbfilter_enabled) %}
+{# We found troubles filtering by %h. It implies creating databases with dots in the name,
+   and ansible resists to create dbs with such names, even though postgres suppports it #}
+{#; Before login, use only the database that matches full domain of Host header
+dbfilter = ^%h$ #}
+; Before login, use only the database that matches the leftmost subdomain part of Host header
+dbfilter = ^%d$
+{% endif %}
+; Allow to select another (not filtered by dbfilter) existing database and enable db manager
+{# Avoid situation where odoo doesn't know what to show (dbfilter) nor can ask to (list_db) #}
+{% if enable_queue_job or (( odoo_dbs | count ) > 1 and not dbfilter_enabled) %}
+list_db = True
+{% else %}
+list_db = {{list_db}}
+{% endif %}
+
+{% if db_port %}
+db_port = {{db_port}}
+{% endif %}
+
+; Ignore accents in searchs
+unaccent = True
+
+; Hack to avoid LC_COLLATE="C"
+db_template = template1
+
+{% if workers is defined and workers > 1 %}
+; If workers > 1 are defined, add a /location in Nginx server for LongPolling
+workers = {{workers}}
+{% endif %}
+
+; Customize the Odoo timeouts
+limit_time_cpu = {{limit_time_cpu}}
+limit_time_real = {{limit_time_real}}
+
+{% if enable_queue_job and channels %}
+[queue_job]
+channels = {{channels}}
+{% endif %}
+
+{% if dev_mode and enabled_rest_framework %}
+[base_rest]
+dev_mode=True
+{% endif %}
+
+{% if enable_sentry and sentry_dsn %}
+[sentry]
+sentry_dsn = {{sentry_dsn}}
+sentry_enabled = True
+{% endif %}

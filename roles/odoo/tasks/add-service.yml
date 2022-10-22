@@ -1,0 +1,18 @@
+---
+- name: Copy systemd service
+  become: true
+  template:
+    src: "odoo.service.j2"
+    dest: "/etc/systemd/system/odoo.service"
+    mode: 02775
+    owner: "{{odoo_user}}"
+    group: "{{odoo_group}}"
+
+- name: Enable service
+  become: true
+  systemd:
+    name: "{{odoo_daemon}}"
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  notify: restart odoo

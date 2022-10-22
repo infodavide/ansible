@@ -1,0 +1,27 @@
+---
+- name:  Create "{{odoo_group}}" group
+  become: yes
+  group:
+    name: "{{odoo_group}}"
+    state: present
+
+- name: Create "{{odoo_user}}" user
+  become: yes
+  user:
+    name: "{{odoo_user}}"
+    groups: "{{odoo_group}}"
+    group: "{{odoo_group}}"
+    home: "/opt/{{odoo_user}}"
+    append: yes
+    state: present
+    shell: /bin/bash
+
+- name: "Create sudoers config for {{odoo_user}} user"
+  become: yes
+  template:
+    dest: "/etc/sudoers.d/{{odoo_user}}"
+    mode: 0440
+    owner: root
+    group: root
+    src: sudoers.odoo
+    validate: "/usr/sbin/visudo -cf %s"

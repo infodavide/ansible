@@ -87,7 +87,7 @@
 # python <=========================================================================
 #----------------------------------------------------------------------------------
 - name: Getting Python site-packages location
-  shell: "python3 -c \"import sys; print filter(lambda x: 'site-packages' in x, sys.path)[0]\""
+  shell: python3 -c 'import site; print(site.getsitepackages()[0])'
   ignore_errors: True
   register: python_path
   tags:
@@ -158,7 +158,7 @@
     - configuration
 
 - name: Updating permissions on admin directory
-  shell: chmod 770 /etc/admin/*.sh
+  shell: chmod 770 /etc/admin/*.sh|:
   ignore_errors: True
   args:
     warn: no
@@ -172,8 +172,6 @@
     owner: root
     group: root
     mode: 0664
-  args:
-    warn: no
   tags:
     - configuration
 
@@ -184,8 +182,6 @@
     owner: root
     group: root
     mode: 0664
-  args:
-    warn: no
   tags:
     - configuration
 
@@ -196,8 +192,6 @@
     owner: root
     group: root
     mode: 0664
-  args:
-    warn: no
   tags:
     - configuration
 
@@ -208,8 +202,6 @@
     owner: root
     group: root
     mode: 0664
-  args:
-    warn: no
   tags:
     - configuration
 
@@ -220,8 +212,6 @@
     owner: root
     group: root
     mode: 0664
-  args:
-    warn: no
   tags:
     - configuration
 
@@ -232,8 +222,6 @@
     owner: root
     group: root
     mode: 0664
-  args:
-    warn: no
   tags:
     - configuration
 

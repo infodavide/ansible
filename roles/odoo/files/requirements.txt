@@ -1,0 +1,5 @@
+# requirements.txt
+odoo11-addon-contract==11.0.2.1.0
+odoo11-addon-contract-sale-invoicing==11.0.1.0.0
+odoo11-addon-contract-variable-qty-timesheet==11.0.1.0.0
+odoo11-addon-contract-variable-quantity==11.0.1.2.1

@@ -74,6 +74,7 @@
 - name: Check if docker is installed
   package: name={{item}} state=present 
   check_mode: true
+  ignore_errors: True
   with_items: 
     - docker-ce
   register: docker_package_check

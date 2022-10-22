@@ -1,60 +1,28 @@
 ---
-
-- name: Copying temporary files
-  copy:
-    src: files/tmp/pgdg-centos10-10-2.noarch.rpm
-    dest: /tmp
-  tags: 
-    - packages
-
-- name: Installing PostgreSQL 10 repository
-  yum:
-    name: /tmp/pgdg-centos10-10-2.noarch.rpm
-    state: present
-  tags: 
-    - packages
-
-- name: Removing PostgreSQL 10 repository rpm file
-  file: 
-    path: /tmp/pgdg-centos10-10-2.noarch.rpm
-    state: absent
-  tags: 
-    - packages
-
-- name: Removing packages
-  package: name={{item}} state=absent
-  with_items:
-    - postgresql
-    - postgresql-server
-    - postgresql-contrib
-  tags: 
-    - packages
-
+# tasks file
+#----------------------------------------------------------------------------------
+# packages <=======================================================================
+#----------------------------------------------------------------------------------
 - name: Installing packages
   package: name={{item}} state=present
   with_items:
+    - acl
     - openssl
-    - postgresql10
-    - postgresql10-server
-    - postgresql10-contrib
-    - openssl-libs
-    - openssl-devel
-    - libpqxx-devel
+    - postgresql-all
     - python-psycopg2
   tags: 
-    - packages
+    - postgresql
 
 #----------------------------------------------------------------------------------
-# profile <=========================================================================
+# profile <========================================================================
 #----------------------------------------------------------------------------------
 - name: Setting path to the PostgreSQL data directory
-  sudo: yes
   lineinfile: 
     path: /etc/profile
     regexp: "^export PGDATA="
     line: "export PGDATA={{ db_data_dir }}"
   tags:
-    - Configuration
+    - postgresql
 
 #----------------------------------------------------------------------------------
 # PostgreSQL <=========================================================================
@@ -65,31 +33,14 @@
   tags:
     - always
 
-- name: Ensuring the PostgreSQL service is stopped
-  service: name=postgresql-10 state=stopped
-  ignore_errors: True
-  tags:
-    - always
-
-- name: Removing PostgreSQL data directory
-  file: 
-    path: "{{ db_data_dir }}"
-    state: absent
-  tags: 
-    - packages
-
-- name: Initializing PostgreSQL data directory
-  shell: runuser -l postgres -c "/usr/pgsql-10/bin/initdb -D {{ db_data_dir }} --auth-local=trust --auth-host=password --encoding=UTF-8"
-  tags:
-    - Configuration
-
 - name: Ensuring the PostgreSQL service is running
-  service: name=postgresql-10 state=started enabled=yes
+  service: name=postgresql state=started enabled=yes
   tags:
-    - Configuration
+    - postgresql
 
 - name: Ensuring database is created
-  sudo_user: postgres
+  become: yes
+  become_user: postgres
   postgresql_db: name={{ item.name }}
                  encoding='UTF-8'
                  lc_collate='en_US.UTF-8'
@@ -98,10 +49,11 @@
                  state=present
   with_items: "{{ databases }}"
   tags:
-    - Configuration
+    - postgresql
 
 - name: Ensuring user has access to the database
-  sudo_user: postgres
+  become: yes
+  become_user: postgres
   postgresql_user: db={{ item.name }}
                    name={{ item.user }}
                    password={{ item.password }}
@@ -110,22 +62,24 @@
                    state=present
   with_items: "{{ databases }}"
   tags:
-    - Configuration
+    - postgresql
 
 - name: Ensuring user does not have unnecessary privileges
-  sudo_user: postgres
+  become: yes
+  become_user: postgres
   postgresql_user: name={{ item.user }}
                    role_attr_flags=NOSUPERUSER,NOCREATEDB
                    state=present
   with_items: "{{ databases }}"
   tags:
-    - Configuration
+    - postgresql
 
 - name: Enabling extensions
-  sudo_user: postgres
+  become: yes
+  become_user: postgres
   postgresql_ext: name={{ item.name }}
                   db={{ item.database }}
                   state=present
   with_items: "{{ extensions }}"
   tags:
-    - Configuration
+    - postgresql
