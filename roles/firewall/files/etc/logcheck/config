@@ -10,7 +10,7 @@ LOGFILES="/var/log/messages /var/log/mail /var/log/audit/audit.log"
 #
 # SYSADMIN="root me@my.home.example.com"
 #
-SYSADMIN=contact@infodavid.org
+SYSADMIN={{email}}
 
 # shouldn't need to touch this...
 HOSTNAME=

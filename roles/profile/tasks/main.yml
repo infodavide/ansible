@@ -21,6 +21,14 @@
   tags:
     - locale
 
+- name: Enabling locale
+  shell: sed -i 's/^# *\en_US.UTF-8\)/\1/' /etc/locale.gen
+  when: ansible_distribution == 'Debian'
+  args:
+    warn: no
+  tags:
+    - locale
+
 - name: Generating locales
   when: ansible_distribution == 'Debian'
   shell: locale-gen

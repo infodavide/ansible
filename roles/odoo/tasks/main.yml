@@ -275,7 +275,7 @@
   command: >
     psql
     -d {{item}}
-    -c "UPDATE ir_config_parameter set value = 'TEST<br/>({db_name})' where key = 'ribbon.name'"
+    -c "UPDATE ir_config_parameter set value = 'TEST<br/>({odoo_db_name})' where key = 'ribbon.name'"
   when:
     - item in test_dbs and "web_environment_ribbon" in community_modules[item]
   with_items: "{{odoo_dbs}}"
@@ -308,5 +308,14 @@
 
 - import_tasks: add-service.yml
   when: not dev_mode | bool
+
+- name: Copy nginx site
+  become: true
+  template:
+    src: "odoo_nginx_site.j2"
+    dest: "/etc/nginx/sites-available/default"
+    mode: 02664
+    owner: "root"
+    group: "root"
 
 - import_tasks: logrotate.yml

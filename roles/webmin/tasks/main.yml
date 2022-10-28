@@ -1,0 +1,61 @@
+---
+# tasks file
+#----------------------------------------------------------------------------------
+# webmin <=========================================================================
+#----------------------------------------------------------------------------------
+- name: Install prerequisite
+  package: name={{item}} state=present
+  with_items:
+    - msmtp
+    - msmtp-mta
+    - perl 
+    - libnet-ssleay-perl 
+    - openssl 
+    - libauthen-pam-perl
+    - libpam-runtime
+    - libio-pty-perl
+    - apt-show-versions
+    - python 
+    - libwww-perl
+    - liblwp-protocol-https-perl
+  notify: cleaning_packages_metadata
+  when: ansible_distribution == 'Debian'
+  tags:
+    - webmin
+
+- name: Add key Webmin repository
+  apt_key:
+    url: https://www.webmin.com/jcameron-key.asc
+    state: present
+  when: ansible_distribution == 'Debian'
+  tags:
+    - webmin
+
+- name: Add Webmin repository
+  apt_repository:
+    repo: 'deb https://download.webmin.com/download/repository sarge contrib'
+    state: present
+    filename: webmin
+    update_cache: yes
+  when: ansible_distribution == 'Debian'
+  tags:
+    - webmin
+
+- name: Updating packages
+  shell: apt-get update -y && apt-get upgrade -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: True
+  args:
+    warn: no
+  notify: cleaning_packages_metadata
+  tags:
+    - webmin
+    
+- name: Install webmin
+  package: name={{item}} state=present
+  with_items:
+    - webmin
+  notify: cleaning_packages_metadata
+  when: ansible_distribution == 'Debian'
+  tags:
+    - webmin

@@ -5,6 +5,14 @@
     update_cache: yes
     cache_valid_time: "{{48 * 60 * 60}}"  # consider the cache to be valid within 48 hours
 
+- name: Creates directory .ansible/tmp
+  file:
+    path: "{{odoo_path}}/.ansible/tmp"
+    state: directory
+    owner: "{{odoo_user}}"
+    group: "{{odoo_group}}"
+    mode: 0777
+
 - name: Install development packages necessary for building Python
   become: true
   apt:

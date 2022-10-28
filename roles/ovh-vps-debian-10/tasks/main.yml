@@ -3,7 +3,7 @@
 #----------------------------------------------------------------------------------
 # repositories and packages for <==================================================
 #----------------------------------------------------------------------------------
-- name: "Add buster security APT repository"
+- name: Add buster security APT repository
   apt_repository:
     repo: deb http://security.debian.org/debian-security/ buster/updates main contrib
     state: present
@@ -11,15 +11,15 @@
   tags:
     - packages
 
-- name: "Add buster security src APT repository"
-  apt_repository:
-    repo: deb-src http://security.debian.org/debian-security/ buster/updates main contrib
-    state: present
-  when: ansible_distribution == 'Debian'
-  tags:
-    - packages
+# - name: Add buster security src APT repository
+#   apt_repository:
+#     repo: deb-src http://security.debian.org/debian-security/ buster/updates main contrib
+#     state: present
+#   when: ansible_distribution == 'Debian'
+#   tags:
+#     - packages
 
-- name: "Add buster APT repository"
+- name: Add buster APT repository
   apt_repository:
     repo: deb http://deb.debian.org/debian/ buster main contrib
     state: present
@@ -27,7 +27,7 @@
   tags:
     - packages
 
-- name: "Add buster updates APT repository"
+- name: Add buster updates APT repository
   apt_repository:
     repo: deb http://deb.debian.org/debian/ buster-updates main contrib
     state: present
@@ -35,7 +35,7 @@
   tags:
     - packages
 
-- name: "Add buster src APT repository"
+- name: Add buster src APT repository
   apt_repository:
     repo: deb-src http://deb.debian.org/debian/ buster-updates main contrib
     state: present
@@ -93,17 +93,6 @@
   tags:
     - python
 
-- name: Setting Python encoding
-  copy:
-    src: files/usr/lib/python/site-packages/sitecustomize.py
-    dest: "{{python_path.stdout}}"
-    owner: root
-    group: root
-    mode: 0664
-  when: python_path.stdout != ""
-  tags:
-    - python
-
 #----------------------------------------------------------------------------------
 # profile <=========================================================================
 #----------------------------------------------------------------------------------
@@ -158,7 +147,7 @@
     - configuration
 
 - name: Updating permissions on admin directory
-  shell: chmod 770 /etc/admin/*.sh|:
+  shell: "chmod 770 /etc/admin/*.sh|:"
   ignore_errors: True
   args:
     warn: no

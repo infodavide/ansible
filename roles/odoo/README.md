@@ -29,78 +29,78 @@ This role supports installing Odoo following two different strategies: `git` (fr
 
 ```yml
 # Odoo releases download strategy: tar or git
-odoo_role_download_strategy: tar
+download_strategy: tar
 
 # Vars for tar download strategy
 # supported any other formats supported by ansible unarchive, i.e. by unzip or gtar)
 # Releases from Odoo.com odoo nightly
-odoo_role_odoo_version: 11.0 # not used outside this file
-odoo_role_odoo_release: 20190505 # not used outside this file
-odoo_role_odoo_url: "https://nightly.odoo.com/{{ odoo_role_odoo_version }}/nightly/src/odoo_{{ odoo_role_odoo_version }}.{{ odoo_role_odoo_release }}.tar.gz"
+odoo_version: 11.0 # not used outside this file
+odoo_release: 20190505 # not used outside this file
+odoo_url: "https://nightly.odoo.com/{{ odoo_version }}/nightly/src/odoo_{{ odoo_version }}.{{ odoo_release }}.tar.gz"
 # Releases from an Odoo comunity backports updated fork
-# odoo_role_odoo_release: "11.0_2019-05-05"
-# odoo_role_odoo_url: "https://gitlab.com/coopdevs/OCB/-/archive/{{ odoo_role_odoo_release }}/OCB-{{ odoo_role_odoo_release }}.tar.gz"
-odoo_role_odoo_download_path: "{{ odoo_role_odoo_path }}/../odoo_releases/odoo_{{ odoo_role_odoo_version }}.{{ odoo_role_odoo_release }}.tar.gz"
+# odoo_release: "11.0_2019-05-05"
+# odoo_url: "https://gitlab.com/coopdevs/OCB/-/archive/{{ odoo_release }}/OCB-{{ odoo_release }}.tar.gz"
+odoo_download_path: "{{ odoo_path }}/../odoo_releases/odoo_{{ odoo_version }}.{{ odoo_release }}.tar.gz"
 
 # Vars for git download strategy
-odoo_role_odoo_git_url: "https://github.com/OCA/OCB.git"
+odoo_git_url: "https://github.com/OCA/OCB.git"
 # OCA's OCB, branch 11.0. LTS probably until 14.0 release. 13.0 is scheduled for October 2019.
-odoo_role_odoo_git_ref: "11.0"
+odoo_git_ref: "11.0"
 ```
 
 * Users and group
 
 ```yml
-odoo_role_odoo_user: odoo
-odoo_role_odoo_group: odoo
+odoo_user: odoo
+odoo_group: odoo
 ```
 
 * Directories structure
 
 ```yml
-odoo_role_odoo_venv_path: /opt/.odoo_venv
-odoo_role_odoo_path: /opt/odoo
-odoo_role_odoo_bin_path: "{{ odoo_role_odoo_path }}/build/scripts-2.7/odoo"
-odoo_role_odoo_python_path: "{{ odoo_venv_path }}/bin/python"
-odoo_role_odoo_config_path: /etc/odoo
-odoo_role_odoo_log_path: /var/log/odoo
-odoo_role_odoo_modules_path: /opt/odoo/modules
+odoo_venv_path: /opt/.odoo_venv
+odoo_path: /opt/odoo
+odoo_bin_path: "{{ odoo_path }}/build/scripts-2.7/odoo"
+odoo_python_path: "{{ odoo_venv_path }}/bin/python"
+odoo_config_path: /etc/odoo
+odoo_log_path: /var/log/odoo
+odoo_modules_path: /opt/odoo/modules
 ```
 
 * Databases
 
 ```yml
 # Array of DBs that the role will create.
-odoo_role_odoo_dbs: [ "odoo" ]
+odoo_dbs: [ "odoo" ]
 # In a multidb environment, where more than one group use the same instance with isolated views,
 # each db name must match the DNS name it will accessed from in order for Odoo to direct the queries to the right DB.
-odoo_role_odoo_dbs: [ "odoo.some.coop", "erp.another.org" ]
+odoo_dbs: [ "odoo.some.coop", "erp.another.org" ]
 # Only in multidb environment, select DB based on the HTTP Host header.
-odoo_role_dbfilter_enabled: true
+dbfilter_enabled: true
 # This is the password Odoo asks to user allow them to create, delete, etc. DBs
-odoo_role_odoo_db_admin_password: 1234
+odoo_db_admin_password: 1234
 # Whether to populate db with example data or not.
-odoo_role_demo_data: false
+demo_data: false
 # Give the chance to select a database before login (when dbfilter disabled), and enable db manager web interface
-odoo_role_list_db: false
+list_db: false
 ```
 
 * Odoo HTTP server settings
 
 ```
 # Set this to 127.0.0.1 when Odoo runs behind a reverse proxy
-odoo_role_odoo_http_interface: 0.0.0.0
+odoo_http_interface: 0.0.0.0
 # Set this to true when Odoo runs behind a reverse proxy
-odoo_role_odoo_proxy_mode: false
+odoo_proxy_mode: false
 # Specify how many HTTP workers you need (default is 1)
-odoo_role_workers: 2
+workers: 2
 ```
 
 * Core modules list to install/update
 
 ```yml
 # List of modules to install before running the server. "Shared" part is common to all db's, specific db modules goes into their "db" part
-odoo_role_odoo_core_modules_dict:
+odoo_core_modules_dict:
   shared:
     - base
   db1:
@@ -112,7 +112,7 @@ odoo_role_odoo_core_modules_dict:
 ```yml
 # List of modules to install before running the server. "Shared" part is common to all db's, specific db modules goes into their "db" part
 
-odoo_role_odoo_community_modules_dict:
+odoo_community_modules_dict:
   shared:
     - web_responsive
   db1:
@@ -122,14 +122,14 @@ odoo_role_odoo_community_modules_dict:
 * Force update odoo modules
 In order to force update an odoo module or a list of modules execute provisioning with the command 
 ```
--e "odoo_role_modules_force_update=['l10n_es']"
+-e "modules_force_update=['l10n_es']"
 ```
 
 * Development mode
 
 Odoo has a mode to auto-reload the server when the code changes and read the views from the code to agile the development process. Using the command line parameter [`--dev`](https://www.odoo.com/documentation/12.0/reference/cmdline.html#developer-features) we can run Odoo in a development mode.
 ```yaml
-odoo_role_dev_mode: true
+dev_mode: true
 ```
 If this mode is active, the systemd unit is not created and you need to run the Odoo process manually.
 You can start it with the following command:
@@ -142,7 +142,7 @@ $ ./odoo-bin -c /etc/odoo/odoo.conf --dev all
 
 If you need to use the Rest Framework and want to start the server in development mode, use:
 ```yaml
-odoo_role_enable_rest_framework: true
+enable_rest_framework: true
 ```
 This option add to the Odoo configuration file the section and option to development mode: https://github.com/OCA/rest-framework/tree/12.0/base_rest#configuration
 
@@ -150,35 +150,35 @@ This option add to the Odoo configuration file the section and option to develop
 
 If you need to use the module [queue\_job](https://github.com/OCA/queue/blob/12.0/queue_job), use:
 ```yaml
-odoo_role_enable_queue_job: true
+enable_queue_job: true
 ```
 
 This option add to the Odoo configuration file the option to enable queue\_job as a new thread/process: https://github.com/OCA/queue/blob/12.0/queue\_job/README.rst#id12
 
 You can also define how many workers you want to use to execute the jobs:
 ```yaml
-odoo_role_channels: root:2
+channels: root:2
 ```
 
 * [sentry](https://github.com/OCA/server-tools/tree/12.0/sentry) support
 
 If you want to use the module [setnry](https://github.com/OCA/server-tools/tree/12.0/sentry), use:
 ```yaml
-odoo_role_enable_sentry: true
-odoo_role_sentry_dsn: https://your_sentry_url
+enable_sentry: true
+sentry_dsn: https://your_sentry_url
 ```
 
 * i18n Overwrite
 
 We can force the i18n overwrite using the next variable:
 ```yaml
-odoo_role_i18n_overwrite: true
+i18n_overwrite: true
 ```
 
 You can define this var in the inventory or use it when execute a playbook:
 
 ```
-ansible-playbook playbooks/provision.yml -i ../my-inventory/inventory/hosts --ask-vault-pass --limit=host -e "{odoo_role_i18n_overwrite: true}"
+ansible-playbook playbooks/provision.yml -i ../my-inventory/inventory/hosts --ask-vault-pass --limit=host -e "{i18n_overwrite: true}"
 ```
 
 * Environment variables
@@ -216,11 +216,11 @@ odoo11-addon-contract-variable-quantity==11.0.1.2.1
 # Install
 Once the modules are in the server, you need to install them in the database.
 
-Define a `odoo_role_odoo_community_modules` var with the list of the modules names you want to install.
+Define a `odoo_community_modules` var with the list of the modules names you want to install.
 
 ```yml
 # invenotry/group_vars/all.yml
-odoo_role_odoo_community_modules: 'contract,contract_sale_invoicing'
+odoo_community_modules: 'contract,contract_sale_invoicing'
 ```
 
 Dependencies
@@ -236,11 +236,11 @@ Example Playbook
   roles:
     - role: coopdevs.odoo-role
       vars:
-        odoo_role_odoo_db_name: odoo-db
-        odoo_role_odoo_db_admin_password: "{{ odoo_admin_password }}"
-        odoo_role_download_strategy: tar
-        odoo_role_odoo_version: 11.0
-        odoo_role_odoo_release: 20180424
+        odoo_db_name: odoo-db
+        odoo_db_admin_password: "{{ odoo_admin_password }}"
+        download_strategy: tar
+        odoo_version: 11.0
+        odoo_release: 20180424
 ```
 
 License

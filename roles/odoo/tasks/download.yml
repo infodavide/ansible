@@ -54,7 +54,6 @@
     when: desired_tar_download.changed
   when: download_strategy == "tar"
 
-
 - name: Removing temporary directory
   file: 
     path: /tmp/odoo_git

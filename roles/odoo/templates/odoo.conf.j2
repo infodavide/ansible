@@ -37,8 +37,17 @@ list_db = True
 list_db = {{list_db}}
 {% endif %}
 
-{% if db_port %}
-db_port = {{db_port}}
+{% if odoo_db_name %}
+db_name = {{odoo_db_name}}
+db_user = {{odoo_db_name}}
+{% endif %}
+
+{% if odoo_db_password %}
+db_password = {{odoo_db_password}}
+{% endif %}
+db_host = localhost
+{% if odoo_db_port %}
+db_port = {{odoo_db_port}}
 {% endif %}
 
 ; Ignore accents in searchs

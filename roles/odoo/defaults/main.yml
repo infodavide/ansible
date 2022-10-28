@@ -3,7 +3,7 @@
 odoo_user: odoo
 odoo_group: odoo
 # VirtualEnv vars
-python_version: "3.7.7"
+python_version: "3.9.15"
 venv_name: "odoo"
 odoo_venv_path: "/opt/{{odoo_user}}/pyenv/versions/{{venv_name}}/"
 # Odoo releases download strategy: tar or git
@@ -11,7 +11,7 @@ download_strategy: git
 # Vars for tar download strategy
 # supported any other formats supported by ansible unarchive, i.e. by unzip or gtar)
 # Releases from Odoo.com odoo nightly
-odoo_version: "14.0" # not used outside this file
+odoo_version: "15.0" # not used outside this file
 odoo_release: 20190505 # not used outside this file
 odoo_url: "https://nightly.odoo.com/{{odoo_version}}/nightly/src/odoo_{{odoo_version}}.{{odoo_release}}.tar.gz"
 # Releases from an Odoo comunity backports updated fork
@@ -19,7 +19,7 @@ odoo_url: "https://nightly.odoo.com/{{odoo_version}}/nightly/src/odoo_{{odoo_ver
 odoo_download_path: "/tmp/odoo_{{odoo_version}}.{{odoo_release}}.tar.gz"
 # Vars for git download strategy
 odoo_git_url: "https://github.com/OCA/OCB.git"
-odoo_git_ref: "14.0"
+odoo_git_ref: "15.0"
 odoo_path: /opt/odoo
 odoo_bin_path: "{{odoo_path}}/odoo-bin"
 odoo_python_path: "{{odoo_venv_path}}/bin/python"
@@ -29,9 +29,11 @@ odoo_log_path: /var/log/odoo
 odoo_log_level: info
 # Read odoo_db_name or default to odoo. To deprecate the var, delete the active line and uncomment the one below this one.
 # odoo_dbs: [ "{{odoo}}" ]
+odoo_db_name: odoo
+odoo_db_password: odoo
+odoo_db_port: 5432
 odoo_dbs: [ "{{odoo_db_name | default('odoo')}}" ]
 test_dbs: []
-db_port: 5432
 # This not a DB user password, but a password for Odoo to deal with DB.
 odoo_db_admin_password: iT0ohDuoth6ONgahDeepaich0aeka5ul
 # Give the chance to select a database before login not filtered out by dbfilter, and enable db manager web interface.

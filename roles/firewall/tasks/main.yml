@@ -3,7 +3,7 @@
 #----------------------------------------------------------------------------------
 # repositories and packages for <==================================================
 #----------------------------------------------------------------------------------
-- name: "Add buster security APT repository"
+- name: Add buster security APT repository
   apt_repository:
     repo: deb http://security.debian.org/debian-security/ buster/updates main contrib
     state: present
@@ -11,15 +11,15 @@
   tags:
     - packages
 
-- name: "Add buster security src APT repository"
-  apt_repository:
-    repo: deb-src http://security.debian.org/debian-security/ buster/updates main contrib
-    state: present
-  when: ansible_distribution == 'Debian'
-  tags:
-    - packages
+# - name: Add buster security src APT repository
+#   apt_repository:
+#     repo: deb-src http://security.debian.org/debian-security/ buster/updates main contrib
+#     state: present
+#   when: ansible_distribution == 'Debian'
+#   tags:
+#     - packages
 
-- name: "Add buster APT repository"
+- name: Add buster APT repository
   apt_repository:
     repo: deb http://deb.debian.org/debian/ buster main contrib
     state: present
@@ -27,7 +27,7 @@
   tags:
     - packages
 
-- name: "Add buster updates APT repository"
+- name: Add buster updates APT repository
   apt_repository:
     repo: deb http://deb.debian.org/debian/ buster-updates main contrib
     state: present
@@ -35,13 +35,13 @@
   tags:
     - packages
 
-- name: "Add buster src APT repository"
-  apt_repository:
-    repo: deb-src http://deb.debian.org/debian/ buster-updates main contrib
-    state: present
-  when: ansible_distribution == 'Debian'
-  tags:
-    - packages
+# - name: Add buster src APT repository
+#   apt_repository:
+#     repo: deb-src http://deb.debian.org/debian/ buster-updates main contrib
+#     state: present
+#   when: ansible_distribution == 'Debian'
+#   tags:
+#     - packages
 
 - name: Updating packages
   shell: apt-get update -y && apt-get upgrade -y
@@ -176,6 +176,20 @@
   tags:
     - firewall
   when: firewall == "ufw"
+
+- name: Enabling firewall service
+  shell: "echo 'y' | sudo ufw enable"
+  tags:
+    - firewall
+  when: firewall == "ufw"
+
+- name: Display firewall rules
+  command: ufw status numbered
+  register: ufw_status_output
+
+- name: Display firewall rules
+  debug:
+    msg: "{{ufw_status_output.stdout}}"
 
 - name: Enabling firewall service
   systemd: enabled=yes state=restarted daemon_reload=yes name=iptables
@@ -318,6 +332,18 @@
     group: root
     mode: 0664
   when: ansible_distribution == 'Debian'
+  tags:
+    - security
+    - firewall
+
+- name: Setting logcheck configuration
+  lineinfile:
+    path: /etc/logcheck/config
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: '^SYSADMIN=.*$', line: 'SYSADMIN={{email}}' }
   tags:
     - security
     - firewall
