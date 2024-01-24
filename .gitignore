@@ -1,0 +1,5 @@
+/etc/
+/files/
+/inventories/
+/group_vars/
+*.yml

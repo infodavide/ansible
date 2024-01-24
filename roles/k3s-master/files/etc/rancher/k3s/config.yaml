@@ -1,0 +1,4 @@
+kube-controller-manager-arg: --allocate-node-cidrs
+flannel-backend: none
+disable-network-policy: true
+disable: traefik
