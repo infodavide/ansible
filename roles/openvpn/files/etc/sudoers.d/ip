@@ -1,2 +1,0 @@
-openvpn ALL=(ALL)  NOPASSWD: /sbin/ip
-%users ALL=(ALL)  NOPASSWD: /sbin/ip

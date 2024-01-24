@@ -1,8 +1,0 @@
----
-# defaults file for tomcat-8
-tomcat_admin_username: admin
-tomcat_admin_password: tomcat
-tomcat_version: 8.5.40
-tomcat_zip_file: apache-tomcat-{{tomcat_version}}.zip
-tomcat_download_url: https://www-eu.apache.org/dist/tomcat/tomcat-8/v{{tomcat_version}}/bin/{{tomcat_zip_file}}
-tomcat_webapps: []

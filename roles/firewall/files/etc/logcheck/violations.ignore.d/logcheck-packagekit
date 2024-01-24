@@ -1,2 +1,0 @@
-^\w{3} [ :0-9]{11} [._[:alnum:]-]+ PackageKit.*?
-^\w{3} [ :0-9]{11} [._[:alnum:]-]+ .*packagekit\.service.*?

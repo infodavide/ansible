@@ -1,4 +1,0 @@
-\w{3} [ :0-9]{11} [._[:alnum:]-]+ sshd\[[0-9]+\]: Invalid user.*
-\w{3} [ :0-9]{11} [._[:alnum:]-]+ sshd\[[0-9]+\]: Disconnected from authenticating user.*
-\w{3} [ :0-9]{11} [._[:alnum:]-]+ sshd\[[0-9]+\]: Connection closed by.*
-\w{3} [ :0-9]{11} [._[:alnum:]-]+ sshd\[[0-9]+\]: Received disconnect from.*

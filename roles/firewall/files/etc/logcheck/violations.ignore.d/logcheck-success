@@ -1,2 +1,0 @@
-\w{3} [ :0-9]{11} [._[:alnum:]-]+ dbus-daemon\[[0-9]+\]: \[system\] Success.*
-\w{3} [ :0-9]{11} [._[:alnum:]-]+ .*Success.*

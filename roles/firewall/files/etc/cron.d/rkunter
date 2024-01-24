@@ -1,2 +1,0 @@
-0 12 * * * root rkhunter --update
-0 13 * * * root rkhunter -c --rwo
