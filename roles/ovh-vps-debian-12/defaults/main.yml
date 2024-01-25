@@ -1,0 +1,8 @@
+# defaults file
+encoding: UTF-8
+locale: it_IT
+locale_encoding: it_IT.UTF-8
+proxy:
+firewall:
+firewall_items:
+- {port: 22, proto: tcp}

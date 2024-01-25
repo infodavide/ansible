@@ -1,0 +1,315 @@
+- name: Updating packages
+  shell: apt-get update -y && apt-get upgrade -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: True
+  args:
+    warn: no
+  notify: cleaning_packages_metadata
+  tags:
+  - always
+
+- name: Installing packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - samba-ad-dc
+  - krb5-user
+  - python3-setproctitle
+  - realmd
+  - sssd
+  - sssd-tools
+  - libnss-sss
+  - libpam-sss
+  - adcli
+  - samba-common-bin
+  - oddjob
+  - oddjob-mkhomedir
+  - packagekit
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg-agent
+  notify: cleaning_packages_metadata
+  tags:
+  - always
+
+- name: Unmasking services
+  shell: "systemctl unmask samba winbind nmbd smbd"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Stopping services
+  systemd: enabled=yes state=stopped daemon_reload=yes name={{item}}
+  with_items:
+  - smbd
+  - nmbd
+  - winbind
+  - samba-ad-dc
+  tags:
+  - always
+
+- name: Removing samba configuration
+  shell: "rm -f /etc/samba/smb.conf"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Copying configuration
+  copy:
+    src: files/etc/
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+  - always
+
+- name: Setting samba configuration
+  shell: "samba-tool domain provision --realm={{internal_domain|upper}}.LAN --domain {{internal_domain|upper}} --server-role=dc --use-rfc2307 --dns-backend=SAMBA_INTERNAL --option='dns forwarder={{internal_dns_ip}}'"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Setting password policy
+  shell: "samba-tool domain passwordsettings set --complexity=off --store-plaintext=off --history-length=2 --min-pwd-length=4 --min-pwd-age=0 --max-pwd-age=0 --account-lockout-duration=30 --account-lockout-threshold=10 --reset-account-lockout-after=30"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Setting administrator password
+  shell: "samba-tool user setpassword administrator --newpassword={{administrator_password}}"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Setting dhcp client configuration
+  replace:
+    path: /etc/dhcp/dhclient.conf
+    regexp: '^\s*(supersede domain-name-servers.*)'
+    replace: '#\1'
+
+- name: Setting dhcp client configuration
+  replace:
+    path: /etc/dhcp/dhclient.conf
+    regexp: '^\s*(append domain-name.*)'
+    replace: '#\1'
+
+- name: Setting dhcp client configuration
+  lineinfile:
+    path: /etc/dhcp/dhclient.conf
+    backup: no
+    line: "{{item}}"
+    state: present
+  with_items:
+  - 'supersede domain-name-servers 127.0.0.1, {{internal_dns_ip}};'
+  - 'append domain-name " {{internal_domain|upper}}.LAN";'
+  tags:
+  - always
+
+- name: Setting resolv configuration
+  lineinfile:
+    path: /etc/resolv.conf
+    backup: no
+    line: "{{item}}"
+    state: present
+  with_items:
+  - 'domain {{internal_domain|upper}}.LAN'
+  - 'search {{internal_domain|upper}}.LAN'
+  - 'nameserver 127.0.0.1'
+  tags:
+  - always
+
+- name: Setting dns configuration
+  shell: "samba-tool dns zonecreate DC1 {{internal_dns_zone}}.in-addr.arpa --username=administrator --password={{administrator_password}}"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Setting kerberos configuration
+  shell: "cp /var/lib/samba/private/krb5.conf /etc/krb5.conf"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Initialize administrator account
+  shell: "echo '{{administrator_password}}' | kinit administrator"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Disabling services
+  systemd: enabled=no state=stopped daemon_reload=yes name={{item}}
+  with_items:
+  - winbind
+  - nmbd
+  - smbd
+  tags:
+  - always
+
+- name: Masking services
+  shell: "systemctl mask samba winbind nmbd smbd"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Unmasking services
+  shell: "systemctl unmask samba-ad-dc"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Starting services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+  - samba-ad-dc
+  tags:
+  - always
+
+- name: Reboot the server
+  shell: "sleep 4 && reboot"
+  async: 1
+  poll: 0
+
+- name: Wait for the reboot to complete if there was a change.
+  wait_for_connection:
+    connect_timeout: 10
+    sleep: 5
+    delay: 5
+    timeout: 300
+
+- name: Discovering
+  shell: "realm discover -v {{internal_domain|upper}}.LAN"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Checking if already joined
+  shell: "realm list|grep -c {{internal_domain|upper}}.LAN"
+  register: realm_joined
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Discovering
+  shell: "realm discover -v {{internal_domain|upper}}.LAN"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Joining
+  shell: "echo '{{administrator_password}}'|realm join {{internal_domain|upper}}.LAN"
+  ignore_errors: False
+  when: realm_joined != '1'
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Setting pam common-session
+  replace:
+    path: /etc/pam.d/common-session
+    regexp: '^(.*pam_mkhomedir.so.*)'
+    replace: '#\1'
+
+- name: Setting pam common-session
+  lineinfile:
+    path: /etc/pam.d/common-session
+    backup: no
+    line: "{{item}}"
+    state: present
+  with_items:
+  - 'session optional pam_mkhomedir.so skel=/etc/skel umask=077'
+  tags:
+  - always
+
+- name: Setting sssd configuration
+  replace:
+    path: /etc/sssd/sssd.conf
+    regexp: "{{item.regexp}}"
+    replace: "{{item.replace}}"
+  with_items:
+  - {regexp: '^use_fully_qualified_names.*$', replace: 'use_fully_qualified_names = False'}
+  - {regexp: '^ldap_user_uid_number.*$', replace: 'ldap_user_uid_number = uidNumber'}
+  - {regexp: '^ldap_user_gid_number.*$', replace: 'ldap_user_gid_number = gidNumber',}
+
+- name: Clearing sssd cache
+  shell: "rm -f /var/lib/sss/db/*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Starting services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+  - sssd
+  tags:
+  - always
+
+#- name: Installing cockpit-samba-ad-dc
+#  shell: "curl -fsSL https://download.opensuse.org/repositories/home:/Hezekiah/Debian_10/Release.key | apt-key add -"
+#  ignore_errors: False
+#  args:
+#    chdir: /tmp
+#    warn: no
+#  tags:
+#  - always
+#  - cockpit
+
+# - name: Installing cockpit-samba-ad-dc repository
+#   shell: 'echo "deb https://download.opensuse.org/repositories/home:/Hezekiah/Debian_10 ./" > /etc/apt/sources.list.d/hezekiah.list'
+#   ignore_errors: False
+#   args:
+#     chdir: /tmp
+#     warn: no
+#   tags:
+#   - always
+#   - cockpit
+
+- name: Updating repositories
+  shell: apt-get update -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
+#   - cockpit
+
+- name: Installing packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - cockpit-samba-ad-dc
+  notify: cleaning_packages_metadata
+  tags:
+  - always
+#   - cockpit

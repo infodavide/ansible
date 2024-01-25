@@ -1,0 +1,366 @@
+- name: Retrieving hostname
+  shell: "hostname"
+  register: current_hostname
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - always
+  - install
+
+- name: Display current hostname
+  debug:
+    var: current_hostname
+
+- name: Set a hostname
+  hostname:
+    name: "{{k3s_hostname}}"
+  when: current_hostname.stdout != k3s_hostname
+  tags:
+  - always
+  - install
+
+- name: Reboot the server
+  shell: "sleep 4 && reboot"
+  async: 1
+  poll: 0
+  when: current_hostname.stdout != k3s_hostname
+
+- name: Wait for the reboot to complete if there was a change.
+  wait_for_connection:
+    connect_timeout: 10
+    sleep: 5
+    delay: 5
+    timeout: 300
+  when: current_hostname.stdout != k3s_hostname
+
+- name: Updating packages
+  shell: apt-get update -y && apt-get upgrade -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: True
+  args:
+    warn: no
+  notify: cleaning_packages_metadata
+  tags:
+  - always
+
+- name: Check if k3s is already installed
+  command: which k3s
+  changed_when: false
+  ignore_errors: true
+  register: k3s_check_command
+
+- name: Display k3s check command
+  debug:
+    var: k3s_check_command
+
+- name: Check k3s status
+  fail:
+    msg: "k3s is not installed"
+  when: k3s_check_command.rc != 0
+  ignore_errors: true
+
+- name: Storing status in variable
+  set_fact:
+    k3s_installation_status: "{{k3s_check_command.rc == 0}}"
+
+- name: Display k3s installation status
+  debug:
+    var: k3s_installation_status
+
+- name: Create K3S directory
+  file:
+    path: "/etc/rancher/k3s"
+    state: directory
+
+- name: Copying configuration
+  copy:
+    src: files/etc/
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  when: not k3s_installation_status
+  tags:
+  - always
+
+- name: Installing packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - curl
+  notify: cleaning_packages_metadata
+  tags:
+  - always
+
+- name: Installation
+  shell: "curl -sfL {{k3s_url}} | INSTALL_K3S_EXEC='server' sh -s"
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  when: not k3s_installation_status
+  tags:
+  - always
+  - install
+
+- name: Installation
+  shell: "systemctl status k3s"
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - always
+  - install
+
+- name: "Retrieving IPv4 of interface: {{network_interface}}"
+  shell: "ip addr show|grep -a3 {{network_interface}}|grep -v inet6|grep inet|cut -d/ -f1|awk '{print $2}'| sed 's/\\s*//'"
+  register: ip_v4
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - always
+  - install
+
+- name: Display IPv4
+  debug:
+    var: ip_v4
+
+- name: Create aliases
+  shell: "touch /etc/profile.d/00-aliases.sh && chown root.root /etc/profile.d/00-aliases.sh && chmod 776 /etc/profile.d/00-aliases.sh"
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - always
+  - install
+
+- name: Update global aliases
+  lineinfile:
+    path: /etc/profile.d/00-aliases.sh
+    backup: no
+    line: "{{item}}"
+    state: present
+  with_items:
+  - "alias k='kubectl'"
+  - "complete -o default -F __start_kubectl k"
+  - "source <(kubectl completion bash)"
+  tags:
+  - always
+  - install
+
+- name: Export KUBECONFIG environment variable
+  lineinfile:
+    path: /etc/profile
+    backup: no
+    line: "{{item}}"
+    state: present
+  with_items:
+  - "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml"
+  tags:
+  - always
+  - install
+
+- name: "Configuration to listen on interface: {{network_interface}}"
+  shell: "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && kubectl config set-cluster default --server=https://{{ip_v4.stdout}}:6443"
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - always
+  - install
+
+- name: Create /root/.kube directory
+  file:
+    path: /root/.kube
+    state: directory
+  tags:
+  - always
+  - install
+
+- name: "Set configuration into .kube directory"
+  shell: "kubectl config view --raw>~/.kube/config"
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - always
+  - install
+
+- name: Reboot the server
+  shell: "sleep 4 && reboot"
+  async: 1
+  poll: 0
+
+- name: Wait for the reboot to complete if there was a change.
+  wait_for_connection:
+    connect_timeout: 10
+    sleep: 5
+    delay: 5
+    timeout: 300
+
+- name: Get cilium version
+  shell: curl -s {{cilium_version_url}}
+  register: cilium_cli_version
+  tags:
+  - cilium
+
+- name: Display cilium version
+  debug:
+    var: cilium_cli_version
+
+- name: Set cilium variables
+  set_fact:
+    current_os: "{{ansible_system|lower}}"
+    current_arch: "{{'amd64' if ansible_architecture == 'x86_64' else 'arm64'}}"
+    cilium_cli_version: "{{cilium_cli_version.stdout|trim}}"
+  tags:
+  - cilium
+
+- name: Download cilium tarball and checksum
+  get_url:
+    url: "{{cilium_url}}/{{cilium_cli_version}}/cilium-{{current_os}}-{{current_arch}}.tar.gz"
+    dest: "/tmp/cilium-{{current_os}}-{{current_arch}}.tar.gz"
+  register: cilium_tarball
+  tags:
+  - cilium
+
+- name: Download cilium checksum
+  get_url:
+    url: "{{cilium_url}}/{{cilium_cli_version}}/cilium-{{current_os}}-{{current_arch}}.tar.gz.sha256sum"
+    dest: "/tmp/cilium-{{current_os}}-{{current_arch}}.tar.gz.sha256sum"
+  register: cilium_checksum
+  tags:
+  - cilium
+
+- name: Verify cilium tarball checksum
+  shell: "sha256sum -c /tmp/cilium-{{current_os}}-{{current_arch}}.tar.gz.sha256sum"
+  args:
+    chdir: "/tmp"
+  register: checksum_result
+  changed_when: false
+  tags:
+  - cilium
+
+- name: Extract cilium tarball
+  unarchive:
+    src: "/tmp/cilium-{{current_os}}-{{current_arch}}.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    creates: "/usr/local/bin/cilium"
+  when: checksum_result.rc == 0
+  tags:
+  - cilium
+
+- name: Clean up cilium tarball and checksum
+  file:
+    path: "/tmp/cilium-{{current_os}}-{{current_arch}}.tar.gz"
+    state: absent
+  when: checksum_result.rc == 0
+  tags:
+  - cilium
+
+- name: Clean up cilium checksum
+  file:
+    path: "/tmp/cilium-{{current_os}}-{{current_arch}}.tar.gz.sha256sum"
+    state: absent
+  when: checksum_result.rc == 0
+  tags:
+  - cilium
+
+- name: Install Cilium
+  command: cilium install
+  tags:
+  - cilium
+
+- name: Install Cilium Hubble observability
+  command: cilium hubble enable
+  tags:
+  - cilium
+
+- name: Check if Helm is installed
+  shell: helm version --short
+  register: helm_version
+  changed_when: false
+  ignore_errors: true
+  tags:
+  - helm
+
+- name: Display Helm version
+  debug:
+    var: helm_version.stdout_lines
+  tags:
+  - helm
+
+- name: Download Helm
+  get_url:
+    url: "{{helm_url}}"
+    dest: /tmp/helm.tar.gz
+    checksum: "{{helm_checksum}}"
+  when: helm_version.rc != 0
+  tags:
+  - helm
+
+- name: Extract Helm
+  unarchive:
+    src: /tmp/helm.tar.gz
+    dest: /tmp
+    remote_src: true
+  when: helm_version.rc != 0
+  tags:
+  - helm
+
+- name: Move Helm binary to /usr/local/bin
+  command: mv /tmp/linux-amd64/helm /usr/local/bin/helm
+  when: helm_version.rc != 0
+  tags:
+  - helm
+
+- name: Clean up Helm files
+  file:
+    path: /tmp/helm.tar.gz
+    state: absent
+  tags:
+  - helm
+
+- name: Check if /etc/bash_completion.d/ exists
+  stat:
+    path: /etc/bash_completion.d/
+  register: bash_completion_dir
+  tags:
+  - helm
+
+- name: Create /etc/bash_completion.d/ directory
+  file:
+    path: /etc/bash_completion.d/
+    state: directory
+  when: not bash_completion_dir.stat.exists
+  tags:
+  - helm
+
+- name: Check if Helm Bash Completion file exists
+  stat:
+    path: /etc/bash_completion.d/helm
+  register: helm_completion_file
+  tags:
+  - helm
+
+- name: Install Helm Bash Completion
+  shell: helm completion bash | sudo tee /etc/bash_completion.d/helm
+  when: not helm_completion_file.stat.exists
+  tags:
+  - helm
+
+- name: Restarting services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+  - k3s
+  tags:
+  - always

@@ -2,4 +2,4 @@
 /files/
 /inventories/
 /group_vars/
-*.yml
+/*.yml

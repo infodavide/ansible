@@ -1,0 +1,178 @@
+- name: Updating packages
+  shell: apt-get update -y && apt-get upgrade -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: True
+  args:
+    warn: no
+  notify: cleaning_packages_metadata
+  tags:
+  - always
+
+- name: Installing packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - krb5-user
+  - python3-setproctitle
+  - realmd
+  - sssd
+  - sssd-tools
+  - libnss-sss
+  - libpam-sss
+  - adcli
+  - samba-common-bin
+  - oddjob
+  - oddjob-mkhomedir
+  - packagekit
+  notify: cleaning_packages_metadata
+  tags:
+  - always
+
+- name: Stopping services
+  systemd: enabled=yes state=stopped daemon_reload=yes name={{item}}
+  with_items:
+  - sssd
+  tags:
+  - always
+
+- name: Copying configuration
+  copy:
+    src: files/etc/
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+  - always
+
+- name: Setting kerberos configuration
+  lineinfile:
+    path: /etc/krb5.conf
+    regexp: '^\s*(default_realm.*)$'
+    state: absent
+
+- name: Setting kerberos configuration
+  lineinfile:
+    path: /etc/krb5.conf
+    backup: no
+    line: "{{item}}"
+    state: present
+  with_items:
+  - '  default_realm = {{internal_domain|upper}}.LAN'
+  tags:
+  - always
+
+- name: Setting dhcp client configuration
+  lineinfile:
+    path: /etc/dhcp/dhclient.conf
+    backup: no
+    line: "{{item}}"
+    state: present
+  with_items:
+  - '#supersede domain-name-servers {{domain_controller_ip}};'
+  - '#append domain-name " {{internal_domain|upper}}.LAN";'
+  tags:
+  - always
+
+- name: Setting resolv configuration
+  lineinfile:
+    path: /etc/resolv.conf
+    backup: no
+    regexp: "{{item}}"
+    state: absent
+  with_items:
+  - '^.*domain.*$'
+  - '^.*search.*$'
+  - '^.*nameserver.*$'
+  tags:
+  - always
+
+- name: Setting resolv configuration
+  lineinfile:
+    path: /etc/resolv.conf
+    backup: no
+    line: "{{item}}"
+    state: present
+    insertbefore: "^nameserver.*$"
+  with_items:
+  - 'domain {{internal_domain|upper}}.LAN'
+  - 'search {{internal_domain|upper}}.LAN'
+  - 'nameserver {{domain_controller_ip}}'
+  tags:
+  - always
+
+- name: Checking if already joined
+  shell: "realm list|grep -c {{internal_domain|upper}}.LAN"
+  register: realm_joined
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Discovering
+  shell: "realm discover -v {{internal_domain|upper}}.LAN"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Joining
+  shell: "echo '{{administrator_password}}'|realm join {{internal_domain|upper}}.LAN"
+  ignore_errors: False
+  when: realm_joined != '1'
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Setting pam common-session
+  replace:
+    path: /etc/pam.d/common-session
+    regexp: '^(.*pam_mkhomedir.so.*)'
+    replace: '#\1'
+
+- name: Setting pam common-session
+  lineinfile:
+    path: /etc/pam.d/common-session
+    backup: no
+    line: "{{item}}"
+    state: present
+  with_items:
+  - 'session optional pam_mkhomedir.so skel=/etc/skel umask=077'
+  tags:
+  - always
+
+- name: Setting sssd configuration
+  replace:
+    path: /etc/sssd/sssd.conf
+    regexp: "{{item.regexp}}"
+    replace: "{{item.replace}}"
+  with_items:
+  - {regexp: '^use_fully_qualified_names.*$', replace: 'use_fully_qualified_names = False'}
+  - {regexp: '^ldap_user_uid_number.*$', replace: 'ldap_user_uid_number = uidNumber'}
+  - {regexp: '^ldap_user_gid_number.*$', replace: 'ldap_user_gid_number = gidNumber',}
+
+- name: Clearing sssd cache
+  shell: "rm -f /var/lib/sss/db/*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Starting services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+  - sssd
+  tags:
+  - always
+
+- name: Verfying identity
+  shell: "id Administrator@{{internal_domain|upper}}.LAN"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always

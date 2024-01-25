@@ -1,0 +1,259 @@
+---
+# tasks file
+#----------------------------------------------------------------------------------
+# system <=========================================================================
+#----------------------------------------------------------------------------------
+- name: Copying sysctl configuration
+  copy:
+    src: files/etc/sysctl.d
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - system
+
+#----------------------------------------------------------------------------------
+# security <=======================================================================
+#----------------------------------------------------------------------------------
+- name: Copying sudoers for trusted users
+  copy:
+    src: files/etc/sudoers.d
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0660
+  tags:
+    - security
+
+#----------------------------------------------------------------------------------
+# admin directory and custom scripts <=============================================
+#----------------------------------------------------------------------------------
+- name: Copying admin directory
+  copy:
+    src: files/etc/admin
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0660
+  tags:
+    - configuration
+
+- name: Updating permissions on admin directory
+  shell: chmod 770 /etc/admin/*.sh
+  args:
+    warn: no
+  tags:
+    - configuration
+
+#----------------------------------------------------------------------------------
+# openvpn <========================================================================
+#----------------------------------------------------------------------------------
+- name: Installing openvpn and easy-rsa packages
+  package: name={{item}} state=present
+  with_items:
+    - ca-certificates-cacert
+    - openvpn
+    - openvpn-auth-pam-plugin
+    - easy-rsa
+  notify: cleaning_packages_metadata
+  tags:
+    - vpn
+
+- name: Create group
+  group:
+    name: "openvpn"
+    state: present
+  tags:
+    - vpn
+
+- name: Creating openvpn user
+  user: 
+    name: "openvpn"
+    groups: "openvpn"
+    password: "openvpn"
+    state: present
+    shell: /bin/false
+    createhome: no
+    append: yes
+    system: yes
+  tags:
+    - vpn
+
+- name: Copying easy-rsa configuration
+  copy:
+    src: files/etc/easy-rsa
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - vpn
+
+- name: Setting easy-rsa configuration
+  lineinfile:
+    path: /etc/easy-rsa/vars
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: '^set_var\s{1,}EASYRSA_REQ_EMAIL.*$', line: 'set_var EASYRSA_REQ_EMAIL "{{email}}"' }
+    - { regexp: '^sset_var\s{1,}EASYRSA_KEY_SIZE.*$', line: 'set_var EASYRSA_KEY_SIZE 2048' }
+  tags:
+    - vpn
+
+- name: Copying openvpn configuration
+  copy:
+    src: files/etc/openvpn
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - vpn
+
+- name: Copying unpriv-ip file
+  copy:
+    src: files/etc/admin/unpriv-ip
+    dest: /usr/local/sbin/
+    owner: root
+    group: root
+    mode: 0775
+  tags:
+    - vpn
+
+- name: Setting openvpn configuration
+  lineinfile:
+    path: /etc/openvpn/server.conf
+    regexp: "{{item}}"
+    state: absent
+  with_items:
+    - '^push\s{1,}"dhcp-option\s{1,}DNS.*$'
+    - '^push\s{1,}"route.*'
+  tags:
+    - vpn
+        
+- name: Setting openvpn configuration
+  lineinfile:
+    path: /etc/openvpn/server.conf
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: '^port.*$', line: 'port 1194' }
+    - { regexp: '^iproute(.*)$', line: '#iproute\1' }
+  tags:
+    - vpn
+
+- name: Setting openvpn configuration
+  lineinfile:
+    path: /etc/openvpn/server.conf
+    line: "{{item}}"
+    state: present
+  with_items:
+    - 'push "dhcp-option DNS {{openvpn_dns}}"'
+    - 'push "dhcp-option DNS 208.67.222.222"'
+    - 'push "route {{openvpn_network}} 255.255.255.0"'
+  tags:
+    - vpn
+
+- name: Checking if Diffie Hellman parameters file exists
+  find:
+    paths: /etc/easy-rsa/pki
+    pattern: 'dh.pem'
+    age: -24h
+  register: dhpem_find_result
+  tags:
+    - vpn
+
+- name: Cleaning keys
+  shell: cd /etc/easy-rsa && easyrsa clean-all
+  args:
+    warn: no
+  when: dhpem_find_result.files | length == 0
+  tags:
+    - vpn
+
+- name: Cleaning keys
+  shell: cd /etc/easy-rsa && easyrsa init-pki
+  args:
+    warn: no
+  when: dhpem_find_result.files | length == 0
+  tags:
+    - vpn
+
+- name: Building Diffie Hellman parameters
+  shell: cd /etc/easy-rsa && easyrsa gen-dh
+  args:
+    warn: no
+  when: dhpem_find_result.files | length == 0
+  tags:
+    - vpn
+
+- name: Checking if CA certificate exists
+  find:
+    paths: /etc/easy-rsa/pki
+    pattern: 'ca.crt'
+    age: -24h
+  register: cacrt_find_result
+  tags:
+    - vpn
+
+- name: Building CA certificate and keys
+  shell: cd /etc/easy-rsa && easyrsa build-ca nopass
+  args:
+    warn: no
+  when: cacrt_find_result.files | length == 0
+  tags:
+    - vpn
+
+- name: Checking if server certificate exists
+  find:
+    paths: /etc/easy-rsa/pki/issued
+    pattern: 'server.crt'
+    age: -24h
+  register: servercrt_find_result
+  tags:
+    - vpn
+
+- name: Building certificates and keys for server
+  shell: cd /etc/easy-rsa && easyrsa --batch gen-req server nopass && easyrsa --batch sign-req server server
+  args:
+    warn: no
+  when: servercrt_find_result.files | length == 0
+  tags:
+    - vpn
+
+- name: Building certificates and keys for client
+  shell: cd /etc/easy-rsa && easyrsa --batch gen-req "{{item.name}}" nopass && easyrsa --batch sign-req client "{{item.name}}"
+  with_items: "{{openvpn_users}}"
+  args:
+    warn: no
+  tags:
+    - vpn
+
+- name: Creating openvpn directories for users
+  file: 
+    path: "{{item.home}}/.openvpn"
+    state: directory
+  with_items: "{{openvpn_users}}"
+  tags:
+    - mount
+
+- name: Copying configuration to homes
+  shell: cp /etc/easy-rsa/pki/ca.crt {{item.home}}/.openvpn && \
+    cp /etc/easy-rsa/pki/issued/{{item.name}}.crt {{item.home}}/.openvpn && \
+    cp /etc/easy-rsa/pki/private/{{item.name}}.key {{item.home}}/.openvpn && \
+    chown -R {{item.name}}.users {{item.home}}/.openvpn
+  with_items: "{{openvpn_users}}"
+  args:
+    warn: no
+  tags:
+    - vpn
+
+- name: Enabling and restart services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+    - openvpn@server
+  tags:
+    - vpn

@@ -1,0 +1,342 @@
+---
+# tasks file
+#----------------------------------------------------------------------------------
+# repositories and packages for <==================================================
+#----------------------------------------------------------------------------------
+- name: Add buster security APT repository
+  apt_repository:
+    repo: deb http://security.debian.org/debian-security/ buster/updates main contrib
+    state: present
+  when: ansible_distribution == 'Debian'
+  tags:
+    - packages
+
+# - name: Add buster security src APT repository
+#   apt_repository:
+#     repo: deb-src http://security.debian.org/debian-security/ buster/updates main contrib
+#     state: present
+#   when: ansible_distribution == 'Debian'
+#   tags:
+#     - packages
+
+- name: Add buster APT repository
+  apt_repository:
+    repo: deb http://deb.debian.org/debian/ buster main contrib
+    state: present
+  when: ansible_distribution == 'Debian'
+  tags:
+    - packages
+
+- name: Add buster updates APT repository
+  apt_repository:
+    repo: deb http://deb.debian.org/debian/ buster-updates main contrib
+    state: present
+  when: ansible_distribution == 'Debian'
+  tags:
+    - packages
+
+- name: Add buster src APT repository
+  apt_repository:
+    repo: deb-src http://deb.debian.org/debian/ buster-updates main contrib
+    state: present
+  when: ansible_distribution == 'Debian'
+  tags:
+    - packages
+
+- name: Updating packages
+  shell: apt-get update -y && apt-get upgrade -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: True
+  args:
+    warn: no
+  notify: cleaning_packages_metadata
+  tags:
+    - packages
+
+- name: Installing packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian'
+  with_items: "{{debian_packages}}"
+  notify: cleaning_packages_metadata
+  tags:
+    - packages
+
+- name: Updating packages
+  shell: apt-get update -y && apt-get upgrade -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: True
+  args:
+    warn: no
+  notify: cleaning_packages_metadata
+  tags:
+    - packages
+
+#----------------------------------------------------------------------------------
+# system <=========================================================================
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+# selinux <========================================================================
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+# locale <=========================================================================
+#----------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------
+# python <=========================================================================
+#----------------------------------------------------------------------------------
+- name: Getting Python site-packages location
+  shell: python3 -c 'import site; print(site.getsitepackages()[0])'
+  ignore_errors: True
+  register: python_path
+  tags:
+    - python
+
+#----------------------------------------------------------------------------------
+# profile <=========================================================================
+#----------------------------------------------------------------------------------
+- name: Copying profile.local file
+  copy:
+    src: files/etc/profile.local
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - profile
+
+#----------------------------------------------------------------------------------
+# security <=======================================================================
+#----------------------------------------------------------------------------------
+- name: Copying sudoers for trusted users
+  copy:
+    src: files/etc/sudoers.d
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0660
+  tags:
+    - security
+
+#----------------------------------------------------------------------------------
+# admin directory and custom scripts <=============================================
+#----------------------------------------------------------------------------------
+- name: Removing existing admin directory
+  file: 
+    path: /etc/admin
+    state: absent
+  tags:
+    - configuration
+
+- name: Removing existing deprecated directory
+  file: 
+    path: /etc/infodavid
+    state: absent
+  tags:
+    - configuration
+
+- name: Copying admin directory
+  copy:
+    src: files/etc/admin
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0660
+  tags:
+    - configuration
+
+- name: Updating permissions on admin directory
+  shell: "chmod 770 /etc/admin/*.sh|:"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+    - configuration
+
+- name: Creating cron tasks
+  copy:
+    src: files/etc/cron.d
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - configuration
+
+- name: Creating monthly cron tasks
+  copy:
+    src: files/etc/cron.monthly
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - configuration
+
+- name: Creating weekly cron tasks
+  copy:
+    src: files/etc/cron.weekly
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - configuration
+
+- name: Creating daily cron tasks
+  copy:
+    src: files/etc/cron.daily
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - configuration
+
+- name: Creating hourly cron tasks
+  copy:
+    src: files/etc/cron.hourly
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - configuration
+
+- name: Creating boot tasks
+  copy:
+    src: files/etc/rc.d
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+    - configuration
+
+#----------------------------------------------------------------------------------
+# mail <===========================================================================
+#----------------------------------------------------------------------------------
+- name: Setting aliases
+  lineinfile:
+    path: /etc/aliases
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: '^root:.*$', line: 'root: {{email}}' }
+    - { regexp: '^default:.*$', line: 'default: {{email}}' }
+  when: email != ""
+  tags:
+    - mail
+
+- name: Installing msmtp package
+  package: name={{item}} state=present
+  with_items:
+    - msmtp
+    - msmtp-mta
+  notify: cleaning_packages_metadata
+  when: mail == "msmtp"
+  tags:
+    - mail
+
+- name: Copying msmtprc configuration
+  copy:
+    src: files/etc/msmtprc
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0660
+  when: mail == "msmtp"
+  tags:
+    - mail
+
+- name: Setting msmtprc configuration
+  lineinfile:
+    path: /etc/msmtprc
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: '^from mail_from.*$', line: 'from {{mail_from}}' }
+    - { regexp: '^host mail_host.*$', line: 'host {{mail_host}}' }
+    - { regexp: '^user mail_user.*$', line: 'user {{mail_user}}' }
+    - { regexp: '^password mail_password.*$', line: 'password {{mail_password}}' }
+  when: mail == "msmtp"
+  tags:
+    - mail
+
+#----------------------------------------------------------------------------------
+# nginx <==========================================================================
+#----------------------------------------------------------------------------------
+- name: Installing nginx package
+  package: name={{item}} state=present
+  with_items:
+    - nginx-common
+    - nginx-full
+    - nginx-extras
+    - nginx
+  notify: cleaning_packages_metadata
+  when: http == "nginx" and ansible_distribution == 'Debian'
+  tags:
+    - nginx
+
+- name: Copying nginx configuration
+  copy:
+    src: files/etc/nginx
+    dest: /etc
+    owner: root
+    group: root
+    mode: 0664
+  when: http == "nginx"
+  tags:
+    - nginx
+
+#----------------------------------------------------------------------------------
+# cerbot <==========================================================================
+#----------------------------------------------------------------------------------
+- name: Installing cerbot packages
+  package: name={{item}} state=present
+  with_items:
+    - python3-acme 
+    - python3-certbot 
+    - python3-mock 
+    - python3-openssl 
+    - python3-pkg-resources 
+    - python3-pyparsing 
+    - python3-zope.interface
+    - python3-certbot-nginx
+    - python3-certifi
+    - certbot 
+  notify: cleaning_packages_metadata
+  when: http == "nginx"
+  tags:
+    - nginx
+
+- name: Setting cerbot certificate for domain
+  shell: certbot --nginx --keep-until-expiring --agree-tos -m {{email}} --redirect -n -d {{https_domain}} -d {{https_url}}
+  ignore_errors: True
+  args:
+    warn: no
+  when: http == "nginx"
+  tags:
+    - nginx
+
+#----------------------------------------------------------------------------------
+# end <============================================================================
+#----------------------------------------------------------------------------------
+- name: Enabling and restart services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+    - sshd
+    - cron
+  tags:
+    - always
+
+- name: Sending a test email
+  shell: "mail -s 'Test email from host: {{ansible_hostname}}' {{email}} < /dev/null"
+  ignore_errors: True
+  args: 
+    warn: no
+  tags:
+    - always

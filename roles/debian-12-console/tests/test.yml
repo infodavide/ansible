@@ -1,0 +1,4 @@
+- hosts: localhost
+  remote_user: root
+  roles:
+  - debian-12-console

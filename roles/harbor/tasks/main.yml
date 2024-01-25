@@ -1,0 +1,282 @@
+- name: Updating packages
+  shell: apt-get update -y && apt-get upgrade -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: True
+  args:
+    warn: no
+  notify: cleaning_packages_metadata
+  tags:
+  - install
+  - update
+
+- name: Installing packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - curl
+  - ca-certificates curl
+  - gnupg
+  - git
+  - ufw
+  notify: cleaning_packages_metadata
+  tags:
+  - install
+  - update
+
+- name: Configuration of keyrings
+  shell: "install -m 0755 -d /etc/apt/keyrings"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+
+- name: Configuration of docker repository
+  shell: "curl -fsSL {{docker_repository_gpg_url}} | gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+
+- name: Configuration of docker repository
+  shell: "chmod a+r /etc/apt/keyrings/docker.gpg"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+
+- name: Configuration of docker repository
+  shell: 'echo "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] {{docker_repository_url}} "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null'
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+
+- name: Updating repositories
+  shell: apt-get update -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+
+- name: Installing docker packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+  notify: cleaning_packages_metadata
+  tags:
+  - install
+
+- name: Ensure group docker exists
+  ansible.builtin.group:
+    name: docker
+    state: present
+  tags:
+  - install
+  - update
+
+- name: Starting docker service
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+  - docker
+  tags:
+  - install
+  - update
+
+- name: Testing docker
+  shell: "docker version"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+
+- name: Download installer
+  shell: "curl -s {{harbor_releases_url}}|grep browser_download_url|cut -d '\"' -f 4 | grep '\\.tgz$' | wget -i -"
+  ignore_errors: False
+  args:
+    chdir: /opt
+    warn: no
+  tags:
+  - install
+
+- name: Decompress installer
+  shell: "tar xvzf harbor-offline-installer*.tgz"
+  ignore_errors: False
+  args:
+    chdir: /opt
+    warn: no
+  tags:
+  - install
+
+- name: Configuration
+  shell: "cp /opt/harbor/harbor.yml.tmpl /opt/harbor/harbor.yml"
+  ignore_errors: False
+  args:
+    chdir: /opt
+    warn: no
+  tags:
+  - install
+
+- name: Configuration
+  replace:
+    path: /opt/harbor/harbor.yml
+    regexp: "{{item.regexp}}"
+    replace: "{{item.replace}}"
+  with_items:
+  - {regexp: '^\s*hostname:.*$', replace: "hostname: {{harbor_hostname}}"}
+  - {regexp: '^\s*harbor_admin_password:.*$', replace: "harbor_admin_password: {{harbor_admin_password}}"}
+  - {regexp: '^(\s*)password:.*$', replace: "/1password: {{harbor_admin_password}}"}
+  tags:
+  - install
+
+- name: Allow all access to tcp port 80
+  ufw:
+    rule: allow
+    port: '80'
+    proto: tcp
+
+- name: Allow all access to tcp port 443
+  ufw:
+    rule: allow
+    port: '443'
+    proto: tcp
+
+- name: Allow all access to tcp port 4443 for Notary
+  ufw:
+    rule: allow
+    port: '4443'
+    proto: tcp
+  when: notary in installation_features|lower
+
+- name: Copying harbor_certs.cnf
+  copy:
+    src: files/etc/opt/harbor/certs/harbor_certs.cnf
+    dest: /opt/harbor/certs/
+    owner: root
+    group: root
+    mode: 0660
+  when: ssl_configuration == "self-signed"
+  tags:
+  - install
+
+- name: Configuration of harbor_certs.cnf
+  replace:
+    path: /opt/harbor/certs/harbor_certs.cnf
+    regexp: "{{item.regexp}}"
+    replace: "{{item.replace}}"
+  with_items:
+  - {regexp: '^\s*commonName.*$', replace: "commonName = {{harbor_hostname}}"}
+  - {regexp: '^\s*countryName.*$', replace: "countryName = {{ssl_country}}"}
+  - {regexp: '^\s*localityName.*$', replace: "localityName = {{ssl_locality}}"}
+  - {regexp: '^\s*stateOrProvinceName.*$', replace: "stateOrProvinceName = {{ssl_state_or_province}}"}
+  - {regexp: '^\s*organizationName.*$', replace: "organizationName = {{ssl_organization}}"}
+  - {regexp: '^\s*emailAddress.*$', replace: "emailAddress = {{ssl_email}}"}
+  when: ssl_configuration == "self-signed"
+  tags:
+  - install
+
+- name: Generating request and key
+  shell: "openssl req -out /opt/harbor/certs/harbor_registry.csr -newkey rsa:4096 --sha512 -nodes -keyout /opt/harbor/certs/harbor_registry.key -config /opt/harbor/certs/harbor_certs.cnf"
+  ignore_errors: False
+  args:
+    chdir: /opt/harbor/certs
+    warn: no
+  when: ssl_configuration == "self-signed"
+  tags:
+  - install
+
+- name: Generating certificate
+  shell: "openssl x509 -in /opt/harbor/certs/harbor_registry.csr -out /opt/harbor/certs/harbor_registry.crt -req -signkey /opt/harbor/certs/harbor_registry.key -days 3650"
+  ignore_errors: False
+  args:
+    chdir: /opt/harbor/certs
+    warn: no
+  when: ssl_configuration == "self-signed"
+  tags:
+  - install
+
+- name: Configuration of SSL
+  replace:
+    path: /opt/harbor/harbor.yml
+    regexp: "{{item.regexp}}"
+    replace: "{{item.replace}}"
+  with_items:
+  - {regexp: '^(\s*)certificate:.*$', replace: "/1certificate: /opt/harbor/certs/harbor_registry.crt"}
+  - {regexp: '^(\s*)private_key:.*$', replace: "/private_key: /opt/harbor/certs/harbor_registry.key"}
+  when: ssl_configuration == "self-signed"
+  tags:
+  - install
+
+- name: Installing cerbot packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian' and ssl_configuration == "lets-encrypt"
+  with_items:
+  - certbot
+  notify: cleaning_packages_metadata
+  tags:
+  - install
+
+- name: Request certificate
+  shell: "certbot certonly --standalone -d {{harbor_hostname}} --preferred-challenges http --agree-tos  -m {{ssl_email}} --keep-until-expiring"
+  ignore_errors: False
+  args:
+    chdir: /opt/harbor/certs
+    warn: no
+  when: ssl_configuration == "lets-encrypt"
+  tags:
+  - install
+
+- name: Configuration of SSL
+  replace:
+    path: /opt/harbor/harbor.yml
+    regexp: "{{item.regexp}}"
+    replace: "{{item.replace}}"
+  with_items:
+  - {regexp: '^(\s*)certificate:.*$', replace: "/1certificate: /etc/letsencrypt/live/{{harbor_hostname}}/fullchain.pem"}
+  - {regexp: '^(\s*)private_key:.*$', replace: "/private_key: /etc/letsencrypt/live/{{harbor_hostname}}/privkey.pem"}
+  when: ssl_configuration == "lets-encrypt"
+  tags:
+  - install
+
+- name: Preparation
+  shell: "bash prepare"
+  ignore_errors: False
+  args:
+    chdir: /opt/harbor
+    warn: no
+  tags:
+  - install
+
+- name: Set installation with Notary
+  set-fact:
+    install_arguments: "{{install_arguments}} --with-notary"
+  when: notary in installation_features|lower
+  tags:
+  - install
+
+- name: Set installation with Chartmuseum
+  set-fact:
+    install_arguments: "{{install_arguments}} --with-chartmuseum"
+  when: chartmuseum in installation_features|lower
+  tags:
+  - install
+
+- name: Installation
+  shell: "bash install.sh {{install_arguments}}"
+  ignore_errors: False
+  args:
+    chdir: /opt/harbor
+    warn: no
+  tags:
+  - install

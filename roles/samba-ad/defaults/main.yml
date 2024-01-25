@@ -1,0 +1,6 @@
+# defaults file
+administrator_password: "secret"
+internal_domain: intranet
+internal_dns_ip: "192.168.1.254"
+internal_dns_zone: "1.168.192"
+

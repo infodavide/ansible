@@ -1,0 +1,139 @@
+- name: Updating packages
+  shell: apt-get update -y && apt-get upgrade -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: True
+  args:
+    warn: no
+  notify: cleaning_packages_metadata
+  tags:
+  - always
+
+- name: Removing packages
+  package: name={{item}} state=absent
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - alsa-topology-conf
+  - alsa-ucm-conf
+  - apparmor-utils
+  - aspell
+  - bluetooth
+  - fail2ban
+  - ispell
+  - sshguard
+  - ufw
+  - wireless-regdb
+  - wireless-tools
+  - wpasupplicant
+
+- name: Auto removing packages
+  shell: apt auto-remove -y
+  when: ansible_distribution == 'Debian'
+  args:
+    warn: no
+
+- name: Installing packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - bash-completion
+  - bash
+  - bzip2
+  - ca-certificates
+  - cloud-init
+  - coreutils
+  - cpio
+  - cron
+  - curl
+  - debianutils
+  - e2fsprogs
+  - fdisk
+  - file
+  - findutils
+  - gpg-agent
+  - gpg-wks-client
+  - gpg-wks-server
+  - gpg
+  - gpgconf
+  - gpgsm
+  - gpgv
+  - grep
+  - gzip
+  - hostname
+  - iperf3
+  - iproute2
+  - iputils-ping
+  - less
+  - logrotate
+  - logtail
+  - mailutils-common
+  - mailutils
+  - mc
+  - ncurses-base
+  - ncurses-bin
+  - net-tools
+  - nfs-common
+  - ntp
+  - openssh-client
+  - openssh-server
+  - openssh-sftp-server
+  - openssl
+  - psmisc
+  - rsync
+  - screen
+  - sed
+  - software-properties-common
+  - sudo
+  - tar
+  - util-linux-extra
+  - util-linux-locales
+  - unzip
+  - vim-common
+  - vim-runtime
+  - vim-tiny
+  - vim
+  - wget
+  - whois
+  notify: cleaning_packages_metadata
+  tags:
+  - always
+
+- name: Installing cockpit repository
+  shell: '. /etc/os-release && echo "deb http://deb.debian.org/debian ${VERSION_CODENAME}-backports main">/etc/apt/sources.list.d/backports.list'
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - always
+
+- name: Installing cockpit repository
+  shell: 'curl -sSL https://repo.45drives.com/setup|bash'
+  ignore_errors: True
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - always
+
+- name: Updating repositories
+  shell: apt-get update -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: True
+  args:
+    warn: no
+  notify: cleaning_packages_metadata
+  tags:
+  - always
+
+- name: Installing packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - cockpit
+  - cockpit-file-sharing
+  - cockpit-identities
+  - cockpit-navigator
+  - cockpit-sosreport
+  notify: cleaning_packages_metadata
+  tags:
+  - always

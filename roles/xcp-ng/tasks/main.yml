@@ -1,0 +1,87 @@
+- name: Copying configuration
+  copy:
+    src: files/etc/
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+  - always
+
+- name: Setting scripts permissions
+  shell: "chmod 777 /etc/admin/*.sh"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
+
+- name: Create symbolic link for xe-custom-startup.sh
+  file:
+    src: "/etc/admin/xe-custom-startup.sh"
+    dest: "/etc/rc.d/init.d/xe-custom-startup.sh"
+    state: link
+
+- name: Create symbolic link for xe-custom-shutdown.sh
+  file:
+    src: "/etc/admin/xe-custom-shutdown.sh"
+    dest: "/etc/rc.d/init.d/xe-custom-shutdown.sh"
+    state: link
+
+- name: Create rc.d symbolic link for xe-custom-startup.sh
+  file:
+    src: "/etc/rc.d/init.d/xe-custom-startup.sh"
+    dest: "{{item}}"
+    state: link
+  with_items:
+  - "/etc/rc.d/rc1.d/S99xe-custom-startup.sh"
+  - "/etc/rc.d/rc2.d/S99xe-custom-startup.sh"
+  - "/etc/rc.d/rc3.d/S99xe-custom-startup.sh"
+  - "/etc/rc.d/rc4.d/S99xe-custom-startup.sh"
+  - "/etc/rc.d/rc5.d/S99xe-custom-startup.sh"
+
+- name: Create rc.d symbolic link for xe-custom-shutdown.sh
+  file:
+    src: "/etc/rc.d/init.d/xe-custom-shutdown.sh"
+    dest: "{{item}}"
+    state: link
+  with_items:
+  - "/etc/rc.d/rc0.d/K01xe-custom-shutdown.sh"
+  - "/etc/rc.d/rc1.d/K01xe-custom-shutdown.sh"
+  - "/etc/rc.d/rc2.d/K01xe-custom-shutdown.sh"
+  - "/etc/rc.d/rc3.d/K01xe-custom-shutdown.sh"
+  - "/etc/rc.d/rc4.d/K01xe-custom-shutdown.sh"
+  - "/etc/rc.d/rc5.d/K01xe-custom-shutdown.sh"
+  - "/etc/rc.d/rc6.d/K01xe-custom-shutdown.sh"
+
+- name: Create /volume1 directory
+  ansible.builtin.file:
+    path: /volume1
+    state: directory
+    owner: root
+    group: root
+    mode: 0777
+
+- name: Create /volume2 directory
+  ansible.builtin.file:
+    path: /volume2
+    state: directory
+    owner: root
+    group: root
+    mode: 0777
+
+- name: Ensure fstab uses /volume1
+  mount:
+    name: "/volume1"
+    src: "/dev/sdb1"
+    fstype: "ext4"
+    opts: "rw,nosuid,nodev,noatime"
+    state: present
+
+- name: Ensure fstab uses /volume2
+  mount:
+    name: "/volume2"
+    src: "/dev/sde1"
+    fstype: "ext4"
+    opts: "rw,nosuid,nodev,noatime"
+    state: present

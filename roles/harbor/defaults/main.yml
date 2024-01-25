@@ -1,0 +1,15 @@
+docker_repository_gpg_url: https://download.docker.com/linux/debian/gpg
+docker_repository_url: https://download.docker.com/linux/debian
+harbor_releases_url: https://api.github.com/repos/goharbor/harbor/releases/latest
+harbor_hostname: img-registry
+harbor_admin_password: secret
+# ssl_configuration can be: self-signed or lets-encrypt
+ssl_configuration: "self-signed"
+ssl_country: "IT"
+ssl_locality: "Milano"
+ssl_state_or_province: "Lombardia"
+ssl_organization: "Organization"
+ssl_email: "contact@domain.com"
+# installation_features can be notary or / and chartmuseum or empty
+installation_features: ""
+install_arguments: ""
