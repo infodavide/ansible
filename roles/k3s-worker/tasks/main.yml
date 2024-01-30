@@ -1,0 +1,197 @@
+- name: Retrieving hostname
+  shell: "hostnamectl hostname"
+  register: current_hostname
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - always
+  - install
+
+- name: Display current hostname
+  debug:
+    var: current_hostname
+
+- name: Updating packages
+  shell: apt-get update -y && apt-get upgrade -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: True
+  args:
+    warn: no
+  notify: cleaning_packages_metadata
+  tags:
+  - always
+
+- name: Create the k3s group
+  group:
+    name: k3s
+  tags:
+  - install
+  - configure
+
+- name: Create the k3s user to be able to exchange files on the cluster for configuration
+  user:
+    name: "{{k3s_user}}"
+    shell: /bin/bash
+    home: /opt/k3s
+    system: true
+    password: "{{k3s_password | password_hash('sha512')}}"
+    group: k3s
+    generate_ssh_key: yes
+    ssh_key_bits: 2048
+    ssh_key_file: .ssh/id_rsa
+  tags:
+  - install
+  - configure
+
+- name: Check if k3s is already installed
+  command: which k3s
+  changed_when: false
+  ignore_errors: true
+  register: k3s_check_command
+
+- name: Display k3s check command
+  debug:
+    var: k3s_check_command
+
+- name: Check k3s status
+  fail:
+    msg: "k3s is not installed"
+  when: k3s_check_command.rc != 0
+  ignore_errors: true
+
+- name: Storing status in variable
+  set_fact:
+    k3s_installation_status: "{{k3s_check_command.rc == 0}}"
+
+- name: Display k3s installation status
+  debug:
+    var: k3s_installation_status
+
+- name: Create K3S directory
+  file:
+    path: "/etc/rancher/k3s"
+    state: directory
+
+- name: Copying configuration
+  copy:
+    src: files/etc/
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  when: not k3s_installation_status
+  tags:
+  - always
+
+- name: Removing packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - bluetooth
+  - fail2ban
+  - sshguard
+  notify: cleaning_packages_metadata
+  tags:
+  - install
+
+- name: Installing packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - curl
+  - nfs-kernel-server
+  - sshpass
+  notify: cleaning_packages_metadata
+  tags:
+  - install
+
+- name: Transfering SSH key
+  command: "sshpass -p '{{k3s_password}}' ssh-copy-id -i /opt/{{k3s_user}}/.ssh/id_rsa.pub -o StrictHostKeyChecking=no {{k3s_user}}@{{k3s_master_ip}}"
+  tags:
+  - install
+  - configure
+
+- name: Installation
+  shell: "curl -sfL {{k3s_url}} | INSTALL_K3S_EXEC='agent' K3S_URL=https://{{k3s_master_ip}}:{{k3s_master_port}} K3S_TOKEN={{k3s_node_token}} sh -"
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  when: not k3s_installation_status
+  tags:
+  - install
+
+- name: Create aliases
+  shell: "touch /etc/profile.d/00-aliases.sh && chown root.root /etc/profile.d/00-aliases.sh && chmod 776 /etc/profile.d/00-aliases.sh"
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - always
+
+- name: Update global aliases
+  lineinfile:
+    path: /etc/profile.d/00-aliases.sh
+    backup: no
+    line: "{{item}}"
+    state: present
+  with_items:
+  - "alias k='kubectl'"
+  - "complete -o default -F __start_kubectl k"
+  - "source <(kubectl completion bash)"
+  tags:
+  - always
+
+- name: Create /root/.kube directory
+  file:
+    path: /root/.kube
+    state: directory
+  tags:
+  - always
+
+- name: "Set configuration into .kube directory"
+  shell: "kubectl config view --raw>~/.kube/config"
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - always
+
+- name: "Set worker label for the node"
+  shell: "sshpass -p '{{k3s_password}}' ssh -o StrictHostKeyChecking=no {{k3s_user}}@{{k3s_master_ip}} 'kubectl label node {{current_hostname.stdout}} node-role.kubernetes.io/worker=worker'"
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - always
+  - configure
+
+
+
+- name: Reboot the server
+  shell: "sleep 4 && reboot"
+  async: 1
+  poll: 0
+  tags:
+  - install
+
+- name: Wait for the reboot to complete if there was a change.
+  wait_for_connection:
+    connect_timeout: 10
+    sleep: 5
+    delay: 5
+    timeout: 300
+  tags:
+  - install
+
+- name: Restarting services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+  - k3s-agent
+  tags:
+  - always

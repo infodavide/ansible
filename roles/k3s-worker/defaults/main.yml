@@ -1,0 +1,10 @@
+# defaults file
+k3s_installation_status:
+k3s_url: https://get.k3s.io
+k3s_user: k3s
+k3s_password: k3s
+k3s_master_ip:
+k3s_master_port:
+# Node token can be retrieved using command 'cat /var/lib/rancher/k3s/server/node-token' on master
+k3s_node_token:
+network_interface: eth0

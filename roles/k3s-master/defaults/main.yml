@@ -1,8 +1,9 @@
 # defaults file
 k3s_installation_status:
 k3s_url: https://get.k3s.io
+k3s_user: k3s
+k3s_password: k3s
 network_interface: eth0
-k3s_hostname: k-master-1
 cilium_url: https://github.com/cilium/cilium-cli/releases/download
 cilium_version_url: https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt
 helm_url: https://get.helm.sh/helm-v3.12.3-linux-amd64.tar.gz
