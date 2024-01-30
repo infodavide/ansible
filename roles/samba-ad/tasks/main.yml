@@ -6,32 +6,70 @@
     warn: no
   notify: cleaning_packages_metadata
   tags:
-  - always
+  - install
+
+- name: Stopping services
+  systemd: enabled=yes state=stopped daemon_reload=yes name={{item}}
+  ignore_errors: True
+  with_items:
+  - nmbd
+  - nscd
+  - realm
+  - samba-ad-dc
+  - smbd
+  - sssd
+  - winbind
+  tags:
+  - install
+  - configure
+
+- name: Removing packages
+  package: name={{item}} state=absent
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - nfs-kernel-server
+  - nscd
+  - sssd
+  notify: cleaning_packages_metadata
+  tags:
+  - install
 
 - name: Installing packages
   package: name={{item}} state=present
   when: ansible_distribution == 'Debian'
   with_items:
-  - samba-ad-dc
-  - krb5-user
-  - python3-setproctitle
-  - realmd
-  - sssd
-  - sssd-tools
-  - libnss-sss
-  - libpam-sss
   - adcli
-  - samba-common-bin
-  - oddjob
-  - oddjob-mkhomedir
-  - packagekit
   - apt-transport-https
   - ca-certificates
   - curl
   - gnupg-agent
+  - krb5-user
+  - ldb-tools
+  - libnss-winbind
+  - libnss-sss
+  - libpam-winbind
+  - libpam-sss
+  - ntpdate
+  - oddjob
+  - oddjob-mkhomedir
+  - packagekit
+  - policykit-1
+  - python3-setproctitle
+  - realmd
+  - samba-ad-dc
+  - samba-common-bin
+  - sssd-ad
   notify: cleaning_packages_metadata
   tags:
-  - always
+  - install
+
+- name: Re-installing packages
+  shell: "apt --reinstall install samba-ad-dc samba-common-bin krb5-user adcli"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
 
 - name: Unmasking services
   shell: "systemctl unmask samba winbind nmbd smbd"
@@ -39,17 +77,8 @@
   args:
     warn: no
   tags:
-  - always
-
-- name: Stopping services
-  systemd: enabled=yes state=stopped daemon_reload=yes name={{item}}
-  with_items:
-  - smbd
-  - nmbd
-  - winbind
-  - samba-ad-dc
-  tags:
-  - always
+  - install
+  - configure
 
 - name: Removing samba configuration
   shell: "rm -f /etc/samba/smb.conf"
@@ -57,7 +86,81 @@
   args:
     warn: no
   tags:
-  - always
+  - install
+  - configure
+
+- name: Removing kerberos keytab file
+  shell: "mv /etc/krb5.keytab /root/krb5.keytab.backup"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing kerberos cache
+  shell: "rm -f /tmp/krb5*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing samba files
+  shell: "rm -fR /var/lib/samba/private/*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing samba logs
+  shell: "rm -R /var/log/samba/*"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing sssd logs
+  shell: "rm /var/log/sssd/*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing sssd db
+  shell: "rm -f /var/lib/sss/db/*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing sssd cache
+  shell: "sss_cache -E"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing sssd mc
+  shell: "rm -f /var/lib/sss/mc/*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
 
 - name: Copying configuration
   copy:
@@ -67,43 +170,85 @@
     group: root
     mode: 0664
   tags:
-  - always
+  - install
+  - configure
 
-- name: Setting samba configuration
-  shell: "samba-tool domain provision --realm={{internal_domain|upper}}.LAN --domain {{internal_domain|upper}} --server-role=dc --use-rfc2307 --dns-backend=SAMBA_INTERNAL --option='dns forwarder={{internal_dns_ip}}'"
+- name: "Retrieving IPv4 of interface: {{network_interface}}"
+  shell: "ip addr show|grep -a3 {{network_interface}}|grep -v inet6|grep inet|cut -d/ -f1|awk '{print $2}'| sed 's/\\s*//'"
+  register: ip_v4
   ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display IPv4
+  debug:
+    var: ip_v4
+  tags:
+  - install
+  - configure
+
+- name: Retrieving hostname
+  shell: "hostnamectl hostname"
+  register: current_hostname
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display current hostname
+  debug:
+    var: current_hostname
+  tags:
+  - install
+  - configure
+
+- name: Leaving
+  shell: "realm leave"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing net cache
+  shell: "net cache flush"
+  ignore_errors: True
   args:
     warn: no
   tags:
   - always
 
-- name: Setting password policy
-  shell: "samba-tool domain passwordsettings set --complexity=off --store-plaintext=off --history-length=2 --min-pwd-length=4 --min-pwd-age=0 --max-pwd-age=0 --account-lockout-duration=30 --account-lockout-threshold=10 --reset-account-lockout-after=30"
-  ignore_errors: False
+- name: Removing samba database
+  shell: "rm -f /var/lib/samba/*.tdb && rm -f /var/lib/samba/group_mapping.ldb"
+  ignore_errors: True
   args:
     warn: no
   tags:
-  - always
-
-- name: Setting administrator password
-  shell: "samba-tool user setpassword administrator --newpassword={{administrator_password}}"
-  ignore_errors: False
-  args:
-    warn: no
-  tags:
-  - always
+  - install
+  - configure
 
 - name: Setting dhcp client configuration
-  replace:
+  lineinfile:
     path: /etc/dhcp/dhclient.conf
-    regexp: '^\s*(supersede domain-name-servers.*)'
-    replace: '#\1'
-
-- name: Setting dhcp client configuration
-  replace:
-    path: /etc/dhcp/dhclient.conf
-    regexp: '^\s*(append domain-name.*)'
-    replace: '#\1'
+    backup: no
+    regexp: '{{item}}'
+    state: absent
+  with_items:
+  - '^.*supersede domain-name.*$'
+  - '^.*supersede domain-name-servers.*$'
+  - '^.*append domain-name.*$'
+  tags:
+  - install
+  - configure
 
 - name: Setting dhcp client configuration
   lineinfile:
@@ -112,11 +257,44 @@
     line: "{{item}}"
     state: present
   with_items:
-  - 'supersede domain-name-servers 127.0.0.1, {{internal_dns_ip}};'
-  - 'append domain-name " {{internal_domain|upper}}.LAN";'
+  - 'supersede domain-name-servers {{ip_v4.stdout}}, {{internal_dns_ip}};'
+  - 'append domain-name " {{internal_domain|upper}}.LOCAL";'
   tags:
-  - always
+  - install
+  - configure
 
+- name: Displaying dhcp client configuration
+  shell: "cat /etc/dhcp/dhclient.conf"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Setting resolv configuration
+  lineinfile:
+    path: /etc/resolv.conf
+    backup: no
+    regexp: "{{item}}"
+    state: absent
+  with_items:
+  - '^domain {{internal_domain|upper}}.*$'
+  - '^search {{internal_domain|upper}}.*$'
+  - '^domain {{internal_domain|lower}}.*$'
+  - '^search {{internal_domain|lower}}.*$'
+  - '^nameserver.*$'
+  tags:
+  - install
+  - configure
 - name: Setting resolv configuration
   lineinfile:
     path: /etc/resolv.conf
@@ -124,19 +302,80 @@
     line: "{{item}}"
     state: present
   with_items:
-  - 'domain {{internal_domain|upper}}.LAN'
-  - 'search {{internal_domain|upper}}.LAN'
-  - 'nameserver 127.0.0.1'
+  - 'domain {{internal_domain|upper}}.LOCAL'
+  - 'search {{internal_domain|upper}}.LOCAL'
+  - 'nameserver {{ip_v4.stdout}}'
   tags:
-  - always
+  - install
+  - configure
 
-- name: Setting dns configuration
-  shell: "samba-tool dns zonecreate DC1 {{internal_dns_zone}}.in-addr.arpa --username=administrator --password={{administrator_password}}"
-  ignore_errors: True
+- name: Displaying resolv configuration
+  shell: "cat /etc/resolv.conf"
+  ignore_errors: False
+  register: results
   args:
     warn: no
   tags:
-  - always
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Setting hosts configuration
+  lineinfile:
+    path: /etc/hosts
+    backup: no
+    regexp: "{{item}}"
+    state: absent
+  with_items:
+  - '\s*{{current_hostname.stdout}}.*'
+  tags:
+  - install
+  - configure
+
+- name: Setting hosts configuration
+  lineinfile:
+    path: /etc/hosts
+    backup: no
+    line: "{{item}}"
+    state: present
+  with_items:
+  - '{{ip_v4.stdout}} {{current_hostname.stdout}}.{{internal_domain|lower}}.local {{internal_domain|lower}}.local {{current_hostname.stdout}}.{{internal_domain|upper}}.LOCAL {{internal_domain|upper}}.LOCAL {{current_hostname.stdout}}'
+  tags:
+  - install
+  - configure
+
+- name: Displaying hosts configuration
+  shell: "cat /etc/hosts"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Provisionning samba domain
+  shell: "samba-tool domain provision --realm={{internal_domain|upper}}.LOCAL --domain {{internal_domain|upper}} --use-rfc2307 --host-name={{current_hostname.stdout}} --server-role=dc --dns-backend=SAMBA_INTERNAL --option='dns forwarder={{internal_dns_ip}}' --adminpass '{{administrator_password}}'"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
 
 - name: Setting kerberos configuration
   shell: "cp /var/lib/samba/private/krb5.conf /etc/krb5.conf"
@@ -144,139 +383,501 @@
   args:
     warn: no
   tags:
-  - always
+  - install
+  - configure
 
-- name: Initialize administrator account
-  shell: "echo '{{administrator_password}}' | kinit administrator"
+- name: Backuping kerberos configuration
+  shell: "mv /var/lib/samba/private/krb5.conf /var/lib/samba/private/krb5.conf.backup"
   ignore_errors: False
   args:
     warn: no
   tags:
-  - always
+  - install
+  - configure
+
+- name: Removing kerberos configuration
+  shell: "ln -s /etc/krb5.conf /var/lib/samba/private/krb5.conf"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Setting kerberos configuration
+  lineinfile:
+    path: /etc/krb5.conf
+    backup: no
+    regexp: "{{item}}"
+    state: absent
+    insertafter: '^\[libdefaults\]\s*$'
+  with_items:
+  - '^\s*rdns\s*=.*$'
+  tags:
+  - install
+  - configure
+
+- name: Setting kerberos configuration
+  lineinfile:
+    path: /etc/krb5.conf
+    backup: no
+    line: "{{item}}"
+    state: present
+    insertafter: '^\[libdefaults\]\s*$'
+  with_items:
+  - 'renew_lifetime = 7d'
+  - 'allow_weak_crypto = true'
+  - 'rdns = false'
+  tags:
+  - install
+  - configure
+
+- name: Setting kerberos configuration
+  lineinfile:
+    path: /etc/krb5.conf
+    backup: no
+    line: "{{item}}"
+    state: present
+    insertafter: '^\[domain_realm\]\s*$'
+  with_items:
+  - '    {{internal_domain|lower}}.local = {{internal_domain|upper}}.LOCAL'
+  - '    .{{internal_domain|lower}}.local = {{internal_domain|upper}}.LOCAL'
+  - '    {{internal_domain|upper}}.LOCAL = {{internal_domain|upper}}.LOCAL'
+  - '    .{{internal_domain|upper}}.LOCAL = {{internal_domain|upper}}.LOCAL'
+  tags:
+  - install
+  - configure
+
+- name: Setting kerberos configuration
+  lineinfile:
+    path: /etc/krb5.conf
+    backup: no
+    line: "{{item}}"
+    state: present
+    insertafter: '^\s*default_domain\s*=\s*{{internal_domain|upper}}.LOCAL\s*$'
+  with_items:
+  - '    kdc = {{ip_v4.stdout}}'
+  - '    admin_server = {{internal_domain|upper}}.LOCAL'
+  - '    master_kdc = {{internal_domain|upper}}.LOCAL'
+  tags:
+  - install
+  - configure
+
+- name: Displaying kerberos configuration
+  shell: "cat /etc/krb5.conf"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Setting systemd service
+  lineinfile:
+    path: /etc/systemd/system/multi-user.target.wants/samba-ad-dc.service
+    backup: no
+    line: "{{item}}"
+    state: present
+    insertafter: '^\[service\]\s*$'
+  with_items:
+  - 'ExecStartPre=/bin/sleep 6'
+  tags:
+  - install
+  - configure
+
+- name: Setting password policy
+  shell: "samba-tool domain passwordsettings set --complexity=off --store-plaintext=off --history-length=2 --min-pwd-length=4 --min-pwd-age=0 --max-pwd-age=0 --account-lockout-duration=30 --account-lockout-threshold=10 --reset-account-lockout-after=30"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
 
 - name: Disabling services
   systemd: enabled=no state=stopped daemon_reload=yes name={{item}}
   with_items:
-  - winbind
   - nmbd
   - smbd
   tags:
-  - always
+  - install
+  - configure
 
 - name: Masking services
-  shell: "systemctl mask samba winbind nmbd smbd"
+  shell: "systemctl mask samba nmbd smbd"
   ignore_errors: True
   args:
     warn: no
   tags:
-  - always
+  - install
+  - configure
 
 - name: Unmasking services
-  shell: "systemctl unmask samba-ad-dc"
+  shell: "systemctl unmask samba-ad-dc winbind"
   ignore_errors: True
   args:
     warn: no
   tags:
-  - always
+  - install
+  - configure
+
+- name: Displaying samba configuration
+  shell: "cat /etc/samba/smb.conf"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
 
 - name: Starting services
   systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
   with_items:
+  - realmd
   - samba-ad-dc
+  - winbind
   tags:
-  - always
+  - install
+  - configure
 
-- name: Reboot the server
-  shell: "sleep 4 && reboot"
-  async: 1
-  poll: 0
+- name: Initialize kerberos
+  shell: "samba-tool domain exportkeytab /etc/krb5.keytab"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
 
-- name: Wait for the reboot to complete if there was a change.
-  wait_for_connection:
-    connect_timeout: 10
-    sleep: 5
-    delay: 5
-    timeout: 300
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Setting dns zone configuration
+  shell: "samba-tool dns zonecreate {{current_hostname.stdout}} {{internal_dns_zone}}.in-addr.arpa --username=administrator --password='{{administrator_password}}'"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+
+- name: Extract IPv4
+  shell: " echo '{{ip_v4.stdout}}'|cut -d'.' -f4"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+
+- name: Setting dns ptr configuration
+  shell: "samba-tool dns add {{current_hostname.stdout}} {{internal_dns_zone}}.in-addr.arpa {{results.stdout}} PTR {{current_hostname.stdout}}.{{internal_domain|upper}}.LOCAL --username=administrator --password='{{administrator_password}}'"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+
+- name: Checking kerberos before joining
+  shell: "klist -ekt /etc/krb5.keytab"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
 
 - name: Discovering
-  shell: "realm discover -v {{internal_domain|upper}}.LAN"
+  shell: "realm discover -v {{internal_domain|upper}}.LOCAL"
   ignore_errors: True
+  register: results
   args:
     warn: no
   tags:
-  - always
+  - install
+  - configure
 
-- name: Checking if already joined
-  shell: "realm list|grep -c {{internal_domain|upper}}.LAN"
-  register: realm_joined
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Joining domain
+  shell: "echo '{{administrator_password}}'|realm join -v {{internal_domain|upper}}.LOCAL"
   ignore_errors: True
+  register: results
   args:
     warn: no
   tags:
-  - always
+  - install
+  - configure
 
-- name: Discovering
-  shell: "realm discover -v {{internal_domain|upper}}.LAN"
-  ignore_errors: False
-  args:
-    warn: no
+- name: Display output
+  debug:
+    var: results
   tags:
-  - always
+  - install
+  - configure
 
-- name: Joining
-  shell: "echo '{{administrator_password}}'|realm join {{internal_domain|upper}}.LAN"
-  ignore_errors: False
-  when: realm_joined != '1'
-  args:
-    warn: no
-  tags:
-  - always
-
-- name: Setting pam common-session
-  replace:
-    path: /etc/pam.d/common-session
-    regexp: '^(.*pam_mkhomedir.so.*)'
-    replace: '#\1'
-
-- name: Setting pam common-session
-  lineinfile:
-    path: /etc/pam.d/common-session
-    backup: no
-    line: "{{item}}"
-    state: present
-  with_items:
-  - 'session optional pam_mkhomedir.so skel=/etc/skel umask=077'
-  tags:
-  - always
-
-- name: Setting sssd configuration
-  replace:
-    path: /etc/sssd/sssd.conf
-    regexp: "{{item.regexp}}"
-    replace: "{{item.replace}}"
-  with_items:
-  - {regexp: '^use_fully_qualified_names.*$', replace: 'use_fully_qualified_names = False'}
-  - {regexp: '^ldap_user_uid_number.*$', replace: 'ldap_user_uid_number = uidNumber'}
-  - {regexp: '^ldap_user_gid_number.*$', replace: 'ldap_user_gid_number = gidNumber',}
-
-- name: Clearing sssd cache
-  shell: "rm -f /var/lib/sss/db/*"
-  ignore_errors: True
-  args:
-    warn: no
-  tags:
-  - always
-
-- name: Starting services
+- name: Restarting services
   systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
   with_items:
+  - realmd
+  tags:
+  - install
+  - configure
+
+- name: Setting pam common-session
+  shell: "pam-auth-update --enable winbind --enable sss"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Checking kerberos after joining
+  shell: "klist -ekt /etc/krb5.keytab"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Restarting services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+  - realmd
   - sssd
   tags:
-  - always
+  - install
+  - configure
+
+- name: Checking dns configuration
+  shell: "host -t SRV _ldap._tcp.{{internal_domain|upper}}.LOCAL."
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Checking dns configuration
+  shell: "host -t SRV _kerberos._udp.{{internal_domain|upper}}.LOCAL."
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Checking dns configuration
+  shell: "host -t A {{current_hostname.stdout}}.{{internal_domain|upper}}.LOCAL."
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Checking dns configuration
+  shell: "host -t PTR {{ip_v4.stdout}}"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Checking kerberos configuration
+  shell: "klist -ekt /etc/krb5.keytab"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Checking configuration
+  shell: "getent group 'domain admins'"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Checking configuration
+  shell: "id 'domain admins'"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Checking configuration
+  shell: "id administrator"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Checking configuration
+  shell: "getent passwd administrator"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
 
 #- name: Installing cockpit-samba-ad-dc
 #  shell: "curl -fsSL https://download.opensuse.org/repositories/home:/Hezekiah/Debian_10/Release.key | apt-key add -"
 #  ignore_errors: False
+#  register: results
 #  args:
 #    chdir: /tmp
 #    warn: no
@@ -284,15 +885,30 @@
 #  - always
 #  - cockpit
 
+# - name: Display output
+#   debug:
+#     var: results
+#   tags:
+#   - install
+#   - configure
+
 # - name: Installing cockpit-samba-ad-dc repository
 #   shell: 'echo "deb https://download.opensuse.org/repositories/home:/Hezekiah/Debian_10 ./" > /etc/apt/sources.list.d/hezekiah.list'
 #   ignore_errors: False
+#   register: results
 #   args:
 #     chdir: /tmp
 #     warn: no
 #   tags:
-#   - always
-#   - cockpit
+#   - install
+#   - configure
+
+# - name: Display output
+#   debug:
+#     var: results
+#   tags:
+#   - install
+#   - configure
 
 - name: Updating repositories
   shell: apt-get update -y
@@ -301,15 +917,14 @@
   args:
     warn: no
   tags:
-  - always
-#   - cockpit
+  - install
 
 - name: Installing packages
   package: name={{item}} state=present
   when: ansible_distribution == 'Debian'
   with_items:
-  - cockpit-samba-ad-dc
+  - cockpit
+  #- cockpit-samba-ad-dc
   notify: cleaning_packages_metadata
   tags:
-  - always
-#   - cockpit
+  - install
