@@ -1,1 +1,3 @@
 # defaults file
+new_hostname:
+secured: False

@@ -1,3 +1,50 @@
+- name: Retrieving hostname
+  shell: "hostnamectl hostname"
+  register: current_hostname
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - install
+
+- name: Display current hostname
+  debug:
+    var: current_hostname
+  tags:
+  - install
+
+- name: Display new hostname
+  debug:
+    var: new_hostname
+  tags:
+  - install
+
+- name: Set a hostname
+  hostname:
+    name: "{{new_hostname}}"
+  when: new_hostname != None and new_hostname != "" and current_hostname.stdout != new_hostname
+  tags:
+  - install
+
+- name: Reboot the server
+  shell: "sleep 4 && reboot"
+  async: 1
+  poll: 0
+  when: new_hostname != None and new_hostname != "" and current_hostname.stdout != new_hostname
+  tags:
+  - install
+
+- name: Wait for the reboot to complete if there was a change.
+  wait_for_connection:
+    connect_timeout: 10
+    sleep: 5
+    delay: 5
+    timeout: 300
+  when: new_hostname != None and new_hostname != "" and current_hostname.stdout != new_hostname
+  tags:
+  - install
+
 - name: Updating packages
   shell: apt-get update -y && apt-get upgrade -y
   when: ansible_distribution == 'Debian'
@@ -6,7 +53,7 @@
     warn: no
   notify: cleaning_packages_metadata
   tags:
-  - always
+  - install
 
 - name: Removing packages
   package: name={{item}} state=absent
@@ -14,22 +61,32 @@
   with_items:
   - alsa-topology-conf
   - alsa-ucm-conf
-  - apparmor-utils
   - aspell
   - bluetooth
-  - fail2ban
   - ispell
-  - sshguard
-  - ufw
+  - vim
   - wireless-regdb
   - wireless-tools
   - wpasupplicant
+  tags:
+  - install
+
+- name: Removing packages
+  package: name={{item}} state=absent
+  when: ansible_distribution == 'Debian' and not secured
+  with_items:
+  - apparmor-utils
+  - fail2ban
+  - sshguard
+  - ufw
+  tags:
+  - install
 
 - name: Auto removing packages
   shell: apt auto-remove -y
   when: ansible_distribution == 'Debian'
-  args:
-    warn: no
+  tags:
+  - install
 
 - name: Installing packages
   package: name={{item}} state=present
@@ -82,38 +139,65 @@
   - screen
   - sed
   - software-properties-common
+  - sshpass
   - sudo
   - tar
+  - tree
   - util-linux-extra
   - util-linux-locales
   - unzip
   - vim-common
   - vim-runtime
   - vim-tiny
-  - vim
   - wget
   - whois
   notify: cleaning_packages_metadata
   tags:
-  - always
+  - install
+
+- name: Installing packages
+  package: name={{item}} state=present
+  when: ansible_distribution == 'Debian' and secured
+  with_items:
+  - apparmor-utils
+  - fail2ban
+  - sshguard
+  - ufw
+  notify: cleaning_packages_metadata
+  tags:
+  - install
 
 - name: Installing cockpit repository
   shell: '. /etc/os-release && echo "deb http://deb.debian.org/debian ${VERSION_CODENAME}-backports main">/etc/apt/sources.list.d/backports.list'
   ignore_errors: False
+  register: results
   args:
     chdir: /tmp
     warn: no
   tags:
-  - always
+  - install
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
 
 - name: Installing cockpit repository
   shell: 'curl -sSL https://repo.45drives.com/setup|bash'
   ignore_errors: True
+  register: results
   args:
     chdir: /tmp
     warn: no
   tags:
-  - always
+  - install
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
 
 - name: Updating repositories
   shell: apt-get update -y
@@ -123,7 +207,7 @@
     warn: no
   notify: cleaning_packages_metadata
   tags:
-  - always
+  - install
 
 - name: Installing packages
   package: name={{item}} state=present
@@ -136,4 +220,4 @@
   - cockpit-sosreport
   notify: cleaning_packages_metadata
   tags:
-  - always
+  - install
