@@ -3,3 +3,4 @@
 /inventories/
 /group_vars/
 /*.yml
+.vscode

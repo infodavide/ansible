@@ -1,3 +1,30 @@
+- name: Removing old values in resolv configuration
+  lineinfile:
+    path: /etc/resolv.conf
+    backup: no
+    regexp: "{{item}}"
+    state: absent
+  with_items:
+  - '^domain.*$'
+  - '^nameserver.*$'
+  - '^search.*$'
+  tags:
+  - install
+  - configure
+- name: Setting resolv configuration
+  lineinfile:
+    path: /etc/resolv.conf
+    backup: no
+    line: "{{item}}"
+    state: present
+  with_items:
+  - 'domain {{internal_domain|lower}}.local'
+  - 'search {{internal_domain|lower}}.local'
+  - 'nameserver {{internal_dns_ip}}'
+  tags:
+  - install
+  - configure
+
 - name: Updating packages
   shell: apt-get update -y && apt-get upgrade -y
   when: ansible_distribution == 'Debian'
@@ -38,8 +65,12 @@
   package: name={{item}} state=present
   when: ansible_distribution == 'Debian'
   with_items:
+  - acl
   - adcli
   - apt-transport-https
+  - attr
+  - autoconf
+  - avahi-daemon
   - ca-certificates
   - curl
   - gnupg-agent
@@ -58,6 +89,8 @@
   - realmd
   - samba-ad-dc
   - samba-common-bin
+  - smbldap-tools
+  - sntp
   - sssd-ad
   notify: cleaning_packages_metadata
   tags:
@@ -228,10 +261,53 @@
   - always
 
 - name: Removing samba database
-  shell: "rm -f /var/lib/samba/*.tdb && rm -f /var/lib/samba/group_mapping.ldb"
+  shell: "rm -f /var/lib/samba/*.tdb"
   ignore_errors: True
   args:
     warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing samba database
+  shell: "rm -f /var/lib/samba/group_mapping.ldb"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Displaying ntp configuration
+  shell: "sntp 0.debian.pool.ntp.org"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Synchronizing date and time
+  shell: "ntpdate -bu 0.debian.pool.ntp.org"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
   tags:
   - install
   - configure
@@ -257,8 +333,8 @@
     line: "{{item}}"
     state: present
   with_items:
-  - 'supersede domain-name-servers {{ip_v4.stdout}}, {{internal_dns_ip}};'
-  - 'append domain-name " {{internal_domain|upper}}.LOCAL";'
+  - 'supersede domain-name-servers {{ip_v4.stdout}};'
+  - 'append domain-name " {{internal_domain|lower}}.local";'
   tags:
   - install
   - configure
@@ -280,18 +356,16 @@
   - install
   - configure
 
-- name: Setting resolv configuration
+- name: Removing old values in resolv configuration
   lineinfile:
     path: /etc/resolv.conf
     backup: no
     regexp: "{{item}}"
     state: absent
   with_items:
-  - '^domain {{internal_domain|upper}}.*$'
-  - '^search {{internal_domain|upper}}.*$'
-  - '^domain {{internal_domain|lower}}.*$'
-  - '^search {{internal_domain|lower}}.*$'
+  - '^domain.*$'
   - '^nameserver.*$'
+  - '^search.*$'
   tags:
   - install
   - configure
@@ -302,8 +376,8 @@
     line: "{{item}}"
     state: present
   with_items:
-  - 'domain {{internal_domain|upper}}.LOCAL'
-  - 'search {{internal_domain|upper}}.LOCAL'
+  - 'domain {{internal_domain|lower}}.local'
+  - 'search {{internal_domain|lower}}.local'
   - 'nameserver {{ip_v4.stdout}}'
   tags:
   - install
@@ -334,6 +408,7 @@
     state: absent
   with_items:
   - '\s*{{current_hostname.stdout}}.*'
+  - '\s*{{ip_v4.stdout}}.*'
   tags:
   - install
   - configure
@@ -345,7 +420,8 @@
     line: "{{item}}"
     state: present
   with_items:
-  - '{{ip_v4.stdout}} {{current_hostname.stdout}}.{{internal_domain|lower}}.local {{internal_domain|lower}}.local {{current_hostname.stdout}}.{{internal_domain|upper}}.LOCAL {{internal_domain|upper}}.LOCAL {{current_hostname.stdout}}'
+  - '127.0.0.1 localhost'
+  - '{{ip_v4.stdout}} {{current_hostname.stdout|lower}}.{{internal_domain|lower}}.local {{internal_domain|lower}}.local {{current_hostname.stdout|lower}}'
   tags:
   - install
   - configure
@@ -377,6 +453,13 @@
   - install
   - configure
 
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
 - name: Setting kerberos configuration
   shell: "cp /var/lib/samba/private/krb5.conf /etc/krb5.conf"
   ignore_errors: False
@@ -395,15 +478,6 @@
   - install
   - configure
 
-- name: Removing kerberos configuration
-  shell: "ln -s /etc/krb5.conf /var/lib/samba/private/krb5.conf"
-  ignore_errors: False
-  args:
-    warn: no
-  tags:
-  - install
-  - configure
-
 - name: Setting kerberos configuration
   lineinfile:
     path: /etc/krb5.conf
@@ -413,6 +487,14 @@
     insertafter: '^\[libdefaults\]\s*$'
   with_items:
   - '^\s*rdns\s*=.*$'
+  - '^\s*default_realm\s*=.*$'
+  - '^\s*dns_lookup_realm\s*=.*$'
+  - '^\s*dns_lookup_kdc\s*=.*$'
+  - '^\s*kdc_timesync\s*=.*$'
+  - '^\s*ccache_type\s*=.*$'
+  - '^\s*forwardable\s*=.*$'
+  - '^\s*proxiable\s*=.*$'
+  - '^\s*fcc-mit-ticketflags\s*=.*$'
   tags:
   - install
   - configure
@@ -425,9 +507,14 @@
     state: present
     insertafter: '^\[libdefaults\]\s*$'
   with_items:
-  - 'renew_lifetime = 7d'
-  - 'allow_weak_crypto = true'
-  - 'rdns = false'
+  - 'default_realm = {{internal_domain|upper}}.LOCAL'
+  - 'dns_lookup_realm = true'
+  - 'dns_lookup_kdc = true'
+  - 'forwardable = true'
+  - 'proxiable = true'
+  - 'fcc-mit-ticketflags = true'
+  - 'kdc_timesync = 1'
+  - 'ccache_type = 4'
   tags:
   - install
   - configure
@@ -442,8 +529,20 @@
   with_items:
   - '    {{internal_domain|lower}}.local = {{internal_domain|upper}}.LOCAL'
   - '    .{{internal_domain|lower}}.local = {{internal_domain|upper}}.LOCAL'
-  - '    {{internal_domain|upper}}.LOCAL = {{internal_domain|upper}}.LOCAL'
-  - '    .{{internal_domain|upper}}.LOCAL = {{internal_domain|upper}}.LOCAL'
+  tags:
+  - install
+  - configure
+
+- name: Setting kerberos configuration
+  lineinfile:
+    path: /etc/krb5.conf
+    backup: no
+    line: "{{item}}"
+    state: absent
+  with_items:
+  - '^\s*kdc\s*=.*$'
+  - '^\s*admin_server\s*=.*$'
+  - '^\s*database_module\s*=.*$'
   tags:
   - install
   - configure
@@ -454,11 +553,11 @@
     backup: no
     line: "{{item}}"
     state: present
-    insertafter: '^\s*default_domain\s*=\s*{{internal_domain|upper}}.LOCAL\s*$'
+    insertafter: '^\s*default_domain\s*=\s*{{internal_domain|lower}}.local\s*$'
   with_items:
-  - '    kdc = {{ip_v4.stdout}}'
-  - '    admin_server = {{internal_domain|upper}}.LOCAL'
-  - '    master_kdc = {{internal_domain|upper}}.LOCAL'
+  - '    kdc = {{current_hostname.stdout|lower}}.{{internal_domain|lower}}.local'
+  - '    admin_server = {{current_hostname.stdout|lower}}.{{internal_domain|lower}}.local'
+  - '    database_module = ldapconf'
   tags:
   - install
   - configure
@@ -512,6 +611,7 @@
 
 - name: Disabling services
   systemd: enabled=no state=stopped daemon_reload=yes name={{item}}
+  ignore_errors: True
   with_items:
   - nmbd
   - smbd
@@ -537,6 +637,36 @@
   - install
   - configure
 
+- name: Setting samba configuration
+  lineinfile:
+    path: /etc/samba/smb.conf
+    backup: no
+    line: "{{item}}"
+    state: absent
+  with_items:
+  - '^\s*netbios name\s*=.*$'
+  - '^\s*realm\s*=.*$'
+  - '^\s*idmap_ldb.use\s*rfc2307\s*=.*$'
+  tags:
+  - install
+  - configure
+
+- name: Setting samba configuration
+  lineinfile:
+    path: /etc/samba/smb.conf
+    backup: no
+    line: "{{item}}"
+    state: present
+    insertafter: '^\[global\]\s*$'
+  with_items:
+  - 'netbios name = {{current_hostname.stdout|upper}}'
+  - 'realm = {{internal_domain|upper}}.LOCAL'
+  - 'workgroup = {{internal_domain|upper}}'
+  - 'idmap_ldb:use rfc2307 = yes'
+  tags:
+  - install
+  - configure
+
 - name: Displaying samba configuration
   shell: "cat /etc/samba/smb.conf"
   ignore_errors: False
@@ -557,6 +687,7 @@
 - name: Starting services
   systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
   with_items:
+  - ntpsec
   - realmd
   - samba-ad-dc
   - winbind
@@ -564,25 +695,26 @@
   - install
   - configure
 
-- name: Initialize kerberos
-  shell: "samba-tool domain exportkeytab /etc/krb5.keytab"
-  ignore_errors: True
-  register: results
-  args:
-    warn: no
+- name: Reboot the server
+  shell: "sleep 4 && reboot"
+  async: 1
+  poll: 0
   tags:
   - install
   - configure
 
-- name: Display output
-  debug:
-    var: results
+- name: Wait for the reboot to complete
+  wait_for_connection:
+    connect_timeout: 10
+    sleep: 5
+    delay: 5
+    timeout: 300
   tags:
   - install
   - configure
 
 - name: Setting dns zone configuration
-  shell: "samba-tool dns zonecreate {{current_hostname.stdout}} {{internal_dns_zone}}.in-addr.arpa --username=administrator --password='{{administrator_password}}'"
+  shell: "samba-tool dns zonecreate {{ip_v4.stdout}} {{internal_dns_zone}}.in-addr.arpa --username=administrator --password='{{administrator_password}}'"
   ignore_errors: True
   register: results
   args:
@@ -626,6 +758,33 @@
   tags:
   - install
 
+- name: Initialize kerberos
+  shell: "samba-tool domain exportkeytab /etc/krb5.keytab"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Initializing kerberos token
+  shell: "echo '{{administrator_password}}'|kinit administrator"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
 - name: Checking kerberos before joining
   shell: "klist -ekt /etc/krb5.keytab"
   ignore_errors: True
@@ -660,6 +819,14 @@
   - install
   - configure
 
+- name: Restarting services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+  - realmd
+  tags:
+  - install
+  - configure
+
 - name: Joining domain
   shell: "echo '{{administrator_password}}'|realm join -v {{internal_domain|upper}}.LOCAL"
   ignore_errors: True
@@ -673,14 +840,6 @@
 - name: Display output
   debug:
     var: results
-  tags:
-  - install
-  - configure
-
-- name: Restarting services
-  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
-  with_items:
-  - realmd
   tags:
   - install
   - configure

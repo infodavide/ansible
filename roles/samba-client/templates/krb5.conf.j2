@@ -1,0 +1,22 @@
+[libdefaults]
+rdns = false
+allow_weak_crypto = true
+renew_lifetime = 7d
+default_realm = {{internal_domain|upper}}.LOCAL
+dns_lookup_realm = false
+dns_lookup_kdc = true
+udp_preference_limit = 0
+
+[realms]
+{{internal_domain|upper}}.LOCAL = {
+	default_domain = {{internal_domain|lower}}.local
+}
+
+[domain_realm]
+    .{{internal_domain|upper}}.LOCAL = {{internal_domain|upper}}.LOCAL
+    {{internal_domain|upper}}.LOCAL = {{internal_domain|upper}}.LOCAL
+    .{{internal_domain|lower}}.local = {{internal_domain|upper}}.LOCAL
+    {{internal_domain|lower}}.local = {{internal_domain|upper}}.LOCAL
+	kdc = {{domain_controller_ip}}
+    admin_server = {{internal_domain|upper}}.LOCAL
+    master_kdc = {{internal_domain|upper}}.LOCAL

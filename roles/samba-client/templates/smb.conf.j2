@@ -1,0 +1,6 @@
+[global]
+#realm = {{internal_domain|upper}}.LOCAL
+security = ads
+workgroup = {{internal_domain|upper}}
+netbios name = {{current_hostname.stdout}} 
+idmap_ldb:use rfc2307 = yes

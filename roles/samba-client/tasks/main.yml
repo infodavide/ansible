@@ -6,34 +6,133 @@
     warn: no
   notify: cleaning_packages_metadata
   tags:
-  - always
+  - install
+
+- name: Removing packages
+  package: name={{item}} state=absent
+  when: ansible_distribution == 'Debian'
+  with_items:
+  - samba
+  - samba-ad-dc
+  - sssd
+  - winbind
+  notify: cleaning_packages_metadata
+  tags:
+  - install
 
 - name: Installing packages
   package: name={{item}} state=present
   when: ansible_distribution == 'Debian'
   with_items:
+  - adcli
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg-agent
   - krb5-user
-  - python3-setproctitle
-  - realmd
-  - sssd
-  - sssd-tools
   - libnss-sss
   - libpam-sss
-  - adcli
-  - samba-common-bin
+  - ntpdate
   - oddjob
   - oddjob-mkhomedir
   - packagekit
+  - policykit-1
+  - python3-cryptography
+  - python3-setproctitle
+  - realmd
+  - samba-common
+  - samba-common-bin
+  - sntp
+  - sssd-ad
+  - sssd-tools
   notify: cleaning_packages_metadata
   tags:
-  - always
+  - install
+
+- name: Re-installing packages
+  shell: "apt --reinstall install samba-common-bin samba-common adcli krb5-user"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
 
 - name: Stopping services
   systemd: enabled=yes state=stopped daemon_reload=yes name={{item}}
+  ignore_errors: True
   with_items:
+  - nmbd
+  - samba-ad-dc
+  - smbd
   - sssd
+  - winbind
   tags:
-  - always
+  - install
+  - configure
+
+- name: Unmasking services
+  shell: "systemctl unmask winbind"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing samba files
+  shell: "rm -fR /var/lib/samba/private/*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing samba logs
+  shell: "rm -R /var/log/samba/*"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing sssd logs
+  shell: "rm /var/log/sssd/*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing sssd db
+  shell: "rm -f /var/lib/sss/db/*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing sssd cache
+  shell: "sss_cache -E"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Removing sssd mc
+  shell: "rm -f /var/lib/sss/mc/*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
 
 - name: Copying configuration
   copy:
@@ -43,24 +142,58 @@
     group: root
     mode: 0664
   tags:
-  - always
+  - install
+  - configure
 
-- name: Setting kerberos configuration
-  lineinfile:
-    path: /etc/krb5.conf
-    regexp: '^\s*(default_realm.*)$'
-    state: absent
-
-- name: Setting kerberos configuration
-  lineinfile:
-    path: /etc/krb5.conf
-    backup: no
-    line: "{{item}}"
-    state: present
-  with_items:
-  - '  default_realm = {{internal_domain|upper}}.LAN'
+- name: "Retrieving IPv4 of interface: {{network_interface}}"
+  shell: "ip addr show|grep -a3 {{network_interface}}|grep -v inet6|grep inet|cut -d/ -f1|awk '{print $2}'| sed 's/\\s*//'"
+  register: ip_v4
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
   tags:
-  - always
+  - install
+  - configure
+
+- name: Display IPv4
+  debug:
+    var: ip_v4
+  tags:
+  - install
+  - configure
+
+- name: Retrieving hostname
+  shell: "hostnamectl hostname"
+  register: current_hostname
+  ignore_errors: False
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display current hostname
+  debug:
+    var: current_hostname
+  tags:
+  - install
+  - configure
+
+- name: Setting dhcp client configuration
+  lineinfile:
+    path: /etc/dhcp/dhclient.conf
+    backup: no
+    regexp: '{{item}}'
+    state: absent
+  with_items:
+  - '^.*supersede domain-name.*$'
+  - '^.*supersede domain-name-servers.*$'
+  - '^.*append domain-name.*$'
+  tags:
+  - install
+  - configure
 
 - name: Setting dhcp client configuration
   lineinfile:
@@ -69,23 +202,42 @@
     line: "{{item}}"
     state: present
   with_items:
-  - '#supersede domain-name-servers {{domain_controller_ip}};'
-  - '#append domain-name " {{internal_domain|upper}}.LAN";'
+  - 'supersede domain-name-servers {{domain_controller_ip}};'
+  - 'append domain-name " {{internal_domain|upper}}.LOCAL";'
   tags:
-  - always
+  - install
+  - configure
 
-- name: Setting resolv configuration
+- name: Displaying dhcp client configuration
+  shell: "cat /etc/dhcp/dhclient.conf"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Removing old values in resolv configuration
   lineinfile:
     path: /etc/resolv.conf
     backup: no
     regexp: "{{item}}"
     state: absent
   with_items:
-  - '^.*domain.*$'
-  - '^.*search.*$'
-  - '^.*nameserver.*$'
+  - '^domain.*$'
+  - '^nameserver.*$'
+  - '^search.*$'
   tags:
-  - always
+  - install
+  - configure
 
 - name: Setting resolv configuration
   lineinfile:
@@ -93,45 +245,238 @@
     backup: no
     line: "{{item}}"
     state: present
-    insertbefore: "^nameserver.*$"
   with_items:
-  - 'domain {{internal_domain|upper}}.LAN'
-  - 'search {{internal_domain|upper}}.LAN'
+  - 'domain {{internal_domain|upper}}.LOCAL'
+  - 'search {{internal_domain|upper}}.LOCAL'
   - 'nameserver {{domain_controller_ip}}'
   tags:
-  - always
+  - install
+  - configure
 
-- name: Checking if already joined
-  shell: "realm list|grep -c {{internal_domain|upper}}.LAN"
-  register: realm_joined
+- name: Displaying resolv configuration
+  shell: "cat /etc/resolv.conf"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Setting hosts configuration
+  lineinfile:
+    path: /etc/hosts
+    backup: no
+    regexp: "{{item}}"
+    state: absent
+  with_items:
+  - '^127\..*$'
+  - '\s*{{current_hostname.stdout}}.*'
+  - '\s*{{ip_v4.stdout}}.*'
+  tags:
+  - install
+  - configure
+
+- name: Setting hosts configuration
+  lineinfile:
+    path: /etc/hosts
+    backup: no
+    line: "{{item}}"
+    state: present
+    insertafter: BOF
+  with_items:
+  - '127.0.0.1 localhost'
+  - '{{ip_v4.stdout}} {{current_hostname.stdout}}.{{internal_domain|lower}}.local {{current_hostname.stdout}}'
+  tags:
+  - install
+  - configure
+
+- name: Displaying hosts configuration
+  shell: "cat /etc/hosts"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Displaying ntp configuration
+  shell: "sntp 0.debian.pool.ntp.org"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Synchronizing date and time
+  shell: "ntpdate -bu 0.debian.pool.ntp.org"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Removing cache
+  shell: "net cache flush"
   ignore_errors: True
   args:
     warn: no
   tags:
   - always
 
-- name: Discovering
-  shell: "realm discover -v {{internal_domain|upper}}.LAN"
-  ignore_errors: False
+- name: Removing samba database
+  shell: "rm -f /var/lib/samba/*.tdb"
+  ignore_errors: True
   args:
     warn: no
   tags:
-  - always
+  - install
+  - configure
 
-- name: Joining
-  shell: "echo '{{administrator_password}}'|realm join {{internal_domain|upper}}.LAN"
-  ignore_errors: False
-  when: realm_joined != '1'
+- name: Removing samba database
+  shell: "rm -f /var/lib/samba/group_mapping.ldb"
+  ignore_errors: True
   args:
     warn: no
   tags:
-  - always
+  - install
+  - configure
+
+# - name: Setting kerberos configuration
+#   template:
+#     src: templates/krb5.conf.j2
+#     dest: /etc/krb5.conf
+#   tags:
+#   - install
+#   - configure
+
+# - name: Displaying kerberos configuration
+#   shell: "cat /etc/krb5.conf"
+#   ignore_errors: False
+#   register: results
+#   args:
+#     warn: no
+#   tags:
+#   - install
+#   - configure
+
+# - name: Display output
+#   debug:
+#     var: results
+#   tags:
+#   - install
+#   - configure
+
+# - name: Initializing kerberos
+#   shell: "echo 'Secret!200517'|kinit administrator"
+#   ignore_errors: True
+#   register: results
+#   args:
+#     warn: no
+#   tags:
+#   - install
+#   - configure
+
+# - name: Display output
+#   debug:
+#     var: results
+#   tags:
+#   - install
+#   - configure
+
+# - name: Checking kerberos
+#   shell: "klist -e"
+#   ignore_errors: True
+#   register: results
+#   args:
+#     warn: no
+#   tags:
+#   - install
+#   - configure
+
+# - name: Display output
+#   debug:
+#     var: results
+#   tags:
+#   - install
+#   - configure
+
+- name: Checking samba directory
+  shell: "mkdir /etc/samba"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+# - name: Setting samba configuration
+#   template:
+#     src: templates/smb.conf.j2
+#     dest: /etc/samba/smb.conf
+#   tags:
+#   - install
+#   - configure
+
+- name: Displaying samba configuration
+  shell: "cat /etc/samba/smb.conf"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
 
 - name: Setting pam common-session
   replace:
     path: /etc/pam.d/common-session
     regexp: '^(.*pam_mkhomedir.so.*)'
     replace: '#\1'
+  tags:
+  - install
+  - configure
 
 - name: Setting pam common-session
   lineinfile:
@@ -142,37 +487,153 @@
   with_items:
   - 'session optional pam_mkhomedir.so skel=/etc/skel umask=077'
   tags:
-  - always
+  - install
+  - configure
 
-- name: Setting sssd configuration
-  replace:
-    path: /etc/sssd/sssd.conf
-    regexp: "{{item.regexp}}"
-    replace: "{{item.replace}}"
-  with_items:
-  - {regexp: '^use_fully_qualified_names.*$', replace: 'use_fully_qualified_names = False'}
-  - {regexp: '^ldap_user_uid_number.*$', replace: 'ldap_user_uid_number = uidNumber'}
-  - {regexp: '^ldap_user_gid_number.*$', replace: 'ldap_user_gid_number = gidNumber',}
-
-- name: Clearing sssd cache
-  shell: "rm -f /var/lib/sss/db/*"
+- name: Leaving
+  shell: "realm -v leave"
   ignore_errors: True
   args:
     warn: no
   tags:
-  - always
+  - install
+  - configure
+
+- name: Discovering
+  shell: "realm -v discover {{internal_domain|upper}}.LOCAL"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Joining domain
+  shell: "echo '{{administrator_password}}'|realm -v join --user=administrator {{internal_domain|upper}}.LOCAL"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Setting pam common-session
+  shell: "pam-auth-update --enable winbind --enable sss"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+# - name: Setting sssd configuration
+#   template:
+#     src: templates/sssd.conf.j2
+#     dest: /etc/sssd/sssd.conf
+#   tags:
+#   - install
+#   - configure
+
+- name: Displaying sssd configuration
+  shell: "cat /etc/sssd/sssd.conf"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
 
 - name: Starting services
   systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
   with_items:
+  - realmd
   - sssd
   tags:
-  - always
+  - install
+  - configure
 
-- name: Verfying identity
-  shell: "id Administrator@{{internal_domain|upper}}.LAN"
-  ignore_errors: True
+- name: Checking configuration
+  shell: "getent group 'domain admins'"
+  ignore_errors: False
+  register: results
   args:
     warn: no
   tags:
-  - always
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Checking configuration
+  shell: "id 'domain admins'"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Checking configuration
+  shell: "id administrator"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Checking configuration
+  shell: "getent passwd administrator"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure

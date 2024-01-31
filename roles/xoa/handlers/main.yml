@@ -16,7 +16,7 @@
     warn: no
 
 - name: cleaning_packages_metadata
-  shell: apt clean
+  shell: apt clean && apt auto-remove
   when: ansible_distribution == 'Debian'
   args:
     warn: no
