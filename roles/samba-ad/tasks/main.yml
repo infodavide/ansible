@@ -589,6 +589,40 @@
   - install
   - configure
 
+- name: Setting nsswitch configuration
+  replace:
+    path: /etc/nsswitch.conf
+    backup: no
+    regexp: "{{item.regexp}}"
+    replace: "{{item.replace}}"
+  with_items:
+  - {regexp: '^(passwd:.*)$', replace: '\1 winbind ldap'}
+  - {regexp: '^(group:.*)$', replace: '\1 winbind ldap'}
+  - {regexp: '^(shadow::.*)$', replace: '\1 ldap'}
+  - {regexp: '^(services:.*)$', replace: '\1 ldap'}
+  - {regexp: '^(rpc:.*)$', replace: '\1 ldap'}
+  - {regexp: '^(initgroups:.*)$', replace: '\1 ldap'}
+  tags:
+  - install
+  - configure
+
+- name: Displaying nsswitch configuration
+  shell: "cat /etc/nsswitch.conf"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
 - name: Setting systemd service
   lineinfile:
     path: /etc/systemd/system/multi-user.target.wants/samba-ad-dc.service
@@ -654,12 +688,13 @@
     line: "{{item}}"
     state: absent
   with_items:
-  - '^\s*netbios name\s*=.*$'
-  - '^\s*realm\s*=.*$'
-  - '^\s*idmap_ldb.use\s*rfc2307\s*=.*$'
-  - '^\s*tls\s*enabled\s*=.*$'
-  - '^\s*tls\s*certfile\s*=.*$'
-  - '^\s*tls\s*cafile\s*=.*$'
+  - '^.*netbios\s*name\s*=.*$'
+  - '^.*realm\s*=.*$'
+  - '^.*workgroup\s*=.*$'
+  - '^.*idmap_ldb.use\s*rfc2307\s*=.*$'
+  - '^.*tls\s*enabled\s*=.*$'
+  - '^.*tls\s*certfile\s*=.*$'
+  - '^.*tls\s*cafile\s*=.*$'
   tags:
   - install
   - configure
