@@ -4,3 +4,8 @@ internal_domain: intranet
 internal_dns_ip: "192.168.1.254"
 internal_dns_zone: "1.168.192"
 network_interface: eth0
+email: contact@infodavid.org
+tls_country: IT
+tls_state: Lombardia
+tls_city: Milano
+tls_organization: infodavid

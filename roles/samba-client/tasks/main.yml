@@ -12,9 +12,12 @@
   package: name={{item}} state=absent
   when: ansible_distribution == 'Debian'
   with_items:
+  - krb5-user
   - samba
+  - samba-common
   - samba-ad-dc
   - sssd
+  - sssd-ad
   - winbind
   notify: cleaning_packages_metadata
   tags:
@@ -29,7 +32,6 @@
   - ca-certificates
   - curl
   - gnupg-agent
-  - krb5-user
   - libnss-sss
   - libpam-sss
   - ntpdate
@@ -40,17 +42,15 @@
   - python3-cryptography
   - python3-setproctitle
   - realmd
-  - samba-common
   - samba-common-bin
   - sntp
-  - sssd-ad
   - sssd-tools
   notify: cleaning_packages_metadata
   tags:
   - install
 
 - name: Re-installing packages
-  shell: "apt --reinstall install samba-common-bin samba-common adcli krb5-user"
+  shell: "apt --reinstall install samba-common-bin samba-common adcli"
   ignore_errors: True
   args:
     warn: no
@@ -332,6 +332,49 @@
   - install
   - configure
 
+- name: Setting ldap configuration
+  lineinfile:
+    path: /etc/ldap/ldap.conf
+    backup: no
+    regexp: "{{item}}"
+    state: absent
+  with_items:
+  - '\s*TLS_REQCERT.*'
+  - '\s*SASL_CBINDING.*'
+  tags:
+  - install
+  - configure
+
+- name: Setting ldap configuration
+  lineinfile:
+    path: /etc/ldap/ldap.conf
+    backup: no
+    line: "{{item}}"
+    state: present
+  with_items:
+  - 'TLS_REQCERT never'
+  - 'SASL_CBINDING tls-endpoint'
+  tags:
+  - install
+  - configure
+
+- name: Displaying ldap configuration
+  shell: "cat /etc/ldap/ldap.conf"
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
 - name: Synchronizing date and time
   shell: "ntpdate -bu 0.debian.pool.ntp.org"
   ignore_errors: False
@@ -375,86 +418,9 @@
   - install
   - configure
 
-# - name: Setting kerberos configuration
-#   template:
-#     src: templates/krb5.conf.j2
-#     dest: /etc/krb5.conf
-#   tags:
-#   - install
-#   - configure
-
-# - name: Displaying kerberos configuration
-#   shell: "cat /etc/krb5.conf"
-#   ignore_errors: False
-#   register: results
-#   args:
-#     warn: no
-#   tags:
-#   - install
-#   - configure
-
-# - name: Display output
-#   debug:
-#     var: results
-#   tags:
-#   - install
-#   - configure
-
-# - name: Initializing kerberos
-#   shell: "echo 'Secret!200517'|kinit administrator"
-#   ignore_errors: True
-#   register: results
-#   args:
-#     warn: no
-#   tags:
-#   - install
-#   - configure
-
-# - name: Display output
-#   debug:
-#     var: results
-#   tags:
-#   - install
-#   - configure
-
-# - name: Checking kerberos
-#   shell: "klist -e"
-#   ignore_errors: True
-#   register: results
-#   args:
-#     warn: no
-#   tags:
-#   - install
-#   - configure
-
-# - name: Display output
-#   debug:
-#     var: results
-#   tags:
-#   - install
-#   - configure
-
-- name: Checking samba directory
-  shell: "mkdir /etc/samba"
+- name: Checking if DC is available
+  shell: "ping -c1 lab.local"
   ignore_errors: True
-  register: results
-  args:
-    warn: no
-  tags:
-  - install
-  - configure
-
-# - name: Setting samba configuration
-#   template:
-#     src: templates/smb.conf.j2
-#     dest: /etc/samba/smb.conf
-#   tags:
-#   - install
-#   - configure
-
-- name: Displaying samba configuration
-  shell: "cat /etc/samba/smb.conf"
-  ignore_errors: False
   register: results
   args:
     warn: no
@@ -465,6 +431,16 @@
 - name: Display output
   debug:
     var: results
+  tags:
+  - install
+  - configure
+
+- name: Checking samba directory
+  shell: "mkdir /etc/samba"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
   tags:
   - install
   - configure
@@ -509,6 +485,13 @@
   - install
   - configure
 
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
 - name: Joining domain
   shell: "echo '{{administrator_password}}'|realm -v join --user=administrator {{internal_domain|upper}}.LOCAL"
   ignore_errors: True
@@ -536,13 +519,32 @@
   - install
   - configure
 
-# - name: Setting sssd configuration
-#   template:
-#     src: templates/sssd.conf.j2
-#     dest: /etc/sssd/sssd.conf
-#   tags:
-#   - install
-#   - configure
+- name: Setting sssd configuration
+  lineinfile:
+    path: /etc/sssd/sssd.conf
+    backup: no
+    regexp: '{{item}}'
+    state: absent
+  with_items:
+  - '^\s*enumerate\s*=.*$'
+  - '^\s*use_fully_qualified_names\s*=.*$'
+  tags:
+  - install
+  - configure
+
+- name: Setting sssd configuration
+  lineinfile:
+    path: /etc/sssd/sssd.conf
+    backup: no
+    line: "{{item}}"
+    state: present
+    insertafter: '^\[domain/{{internal_domain|lower}}.local\].*$'
+  with_items:
+  - 'enumerate = True'
+  - 'use_fully_qualified_names = False'
+  tags:
+  - install
+  - configure
 
 - name: Displaying sssd configuration
   shell: "cat /etc/sssd/sssd.conf"
@@ -572,23 +574,6 @@
 
 - name: Checking configuration
   shell: "getent group 'domain admins'"
-  ignore_errors: False
-  register: results
-  args:
-    warn: no
-  tags:
-  - install
-  - configure
-
-- name: Display output
-  debug:
-    var: results
-  tags:
-  - install
-  - configure
-
-- name: Checking configuration
-  shell: "id 'domain admins'"
   ignore_errors: False
   register: results
   args:

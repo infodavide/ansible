@@ -54,9 +54,12 @@
   package: name={{item}} state=absent
   when: ansible_distribution == 'Debian'
   with_items:
+  - libnss-sss
+  - libpam-sss
   - nfs-kernel-server
   - nscd
   - sssd
+  - sssd-ad
   notify: cleaning_packages_metadata
   tags:
   - install
@@ -77,9 +80,7 @@
   - krb5-user
   - ldb-tools
   - libnss-winbind
-  - libnss-sss
   - libpam-winbind
-  - libpam-sss
   - ntpdate
   - oddjob
   - oddjob-mkhomedir
@@ -91,7 +92,6 @@
   - samba-common-bin
   - smbldap-tools
   - sntp
-  - sssd-ad
   notify: cleaning_packages_metadata
   tags:
   - install
@@ -278,6 +278,15 @@
   - install
   - configure
 
+- name: Removing samba certificates
+  shell: "rm -f /var/lib/samba/private/tls/*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
 - name: Displaying ntp configuration
   shell: "sntp 0.debian.pool.ntp.org"
   ignore_errors: False
@@ -407,7 +416,8 @@
     regexp: "{{item}}"
     state: absent
   with_items:
-  - '\s*{{current_hostname.stdout}}.*'
+  - '\s*{{current_hostname.stdout|lower}}.*'
+  - '\s*{{current_hostname.stdout|upper}}.*'
   - '\s*{{ip_v4.stdout}}.*'
   tags:
   - install
@@ -444,7 +454,7 @@
   - configure
 
 - name: Provisionning samba domain
-  shell: "samba-tool domain provision --realm={{internal_domain|upper}}.LOCAL --domain {{internal_domain|upper}} --use-rfc2307 --host-name={{current_hostname.stdout}} --server-role=dc --dns-backend=SAMBA_INTERNAL --option='dns forwarder={{internal_dns_ip}}' --adminpass '{{administrator_password}}'"
+  shell: "samba-tool domain provision --realm={{internal_domain|upper}}.LOCAL --domain {{internal_domain|upper}} --use-rfc2307 --host-name={{current_hostname.stdout|lower}} --server-role=dc --dns-backend=SAMBA_INTERNAL --option='dns forwarder={{internal_dns_ip}}' --adminpass '{{administrator_password}}'"
   ignore_errors: False
   register: results
   args:
@@ -647,6 +657,9 @@
   - '^\s*netbios name\s*=.*$'
   - '^\s*realm\s*=.*$'
   - '^\s*idmap_ldb.use\s*rfc2307\s*=.*$'
+  - '^\s*tls\s*enabled\s*=.*$'
+  - '^\s*tls\s*certfile\s*=.*$'
+  - '^\s*tls\s*cafile\s*=.*$'
   tags:
   - install
   - configure
@@ -659,10 +672,14 @@
     state: present
     insertafter: '^\[global\]\s*$'
   with_items:
-  - 'netbios name = {{current_hostname.stdout|upper}}'
+  - 'netbios name = {{current_hostname.stdout|lower}}'
   - 'realm = {{internal_domain|upper}}.LOCAL'
   - 'workgroup = {{internal_domain|upper}}'
   - 'idmap_ldb:use rfc2307 = yes'
+  - 'tls enabled = yes'
+  - 'tls keyfile = tls/self_signed_key.pem'
+  - 'tls certfile = tls/self_signed_cert.pem'
+  - 'tls cafile = '
   tags:
   - install
   - configure
@@ -672,6 +689,41 @@
   ignore_errors: False
   register: results
   args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Creating self signed samba certificate
+  shell: "openssl req -newkey rsa:2048 -keyout  /var/lib/samba/private/tls/self_signed_key.pem -nodes -x509 -days 365 -out  /var/lib/samba/private/tls/self_signed_cert.pem -subj \"/C={{tls_country}}/ST={{tls_state}}/L={{tls_city}}/O={{tls_organization}}/OU={{internal_domain}}/CN={{current_hostname.stdout|lower}}.{{internal_domain|lower}}.local/emailAddress={{email}}\""
+  ignore_errors: False
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
+- name: Displaying samba certificate
+  shell: "openssl x509 -in self_signed_cert.pem -text"
+  ignore_errors: True
+  register: results
+  args:
+    chdir: /var/lib/samba/private/tls
     warn: no
   tags:
   - install
@@ -744,7 +796,7 @@
   - install
 
 - name: Setting dns ptr configuration
-  shell: "samba-tool dns add {{current_hostname.stdout}} {{internal_dns_zone}}.in-addr.arpa {{results.stdout}} PTR {{current_hostname.stdout}}.{{internal_domain|upper}}.LOCAL --username=administrator --password='{{administrator_password}}'"
+  shell: "samba-tool dns add {{current_hostname.stdout|lower}} {{internal_dns_zone}}.in-addr.arpa {{results.stdout}} PTR {{current_hostname.stdout|lower}}.{{internal_domain|upper}}.LOCAL --username=administrator --password='{{administrator_password}}'"
   ignore_errors: True
   register: results
   args:
@@ -827,22 +879,23 @@
   - install
   - configure
 
-- name: Joining domain
-  shell: "echo '{{administrator_password}}'|realm join -v {{internal_domain|upper}}.LOCAL"
-  ignore_errors: True
-  register: results
-  args:
-    warn: no
-  tags:
-  - install
-  - configure
+# If the DC is joined to the domain, the computer type is changed and clients cannot join the domain anymore
+# - name: Joining domain
+#   shell: "echo '{{administrator_password}}'|realm join -v {{internal_domain|upper}}.LOCAL"
+#   ignore_errors: True
+#   register: results
+#   args:
+#     warn: no
+#   tags:
+#   - install
+#   - configure
 
-- name: Display output
-  debug:
-    var: results
-  tags:
-  - install
-  - configure
+# - name: Display output
+#   debug:
+#     var: results
+#   tags:
+#   - install
+#   - configure
 
 - name: Setting pam common-session
   shell: "pam-auth-update --enable winbind --enable sss"
@@ -875,7 +928,6 @@
   systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
   with_items:
   - realmd
-  - sssd
   tags:
   - install
   - configure
@@ -915,7 +967,7 @@
   - configure
 
 - name: Checking dns configuration
-  shell: "host -t A {{current_hostname.stdout}}.{{internal_domain|upper}}.LOCAL."
+  shell: "host -t A {{current_hostname.stdout|lower}}.{{internal_domain|upper}}.LOCAL."
   ignore_errors: False
   register: results
   args:
