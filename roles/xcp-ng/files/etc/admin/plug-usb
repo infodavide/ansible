@@ -1,0 +1,32 @@
+#!/bin/bash
+
+pusb_uuid="$1"
+vm_uuid="$2"
+
+if [ -z "$pusb_uuid" ] || [ -z "$vm_uuid" ]; then
+  echo "Usage: plug-usb <pusb-device-uuid> <vm-uuid>"
+  exit 1
+fi
+
+vm_name=`xe vm-list uuid="$vm_uuid" | grep name-label | sed -E 's/^.*: //g'`
+pusb_name=`xe pusb-list uuid="$pusb_uuid" | grep product-desc | sed -E 's/^.*: //g'`
+
+if ! [ -z "`xe vm-list uuid="$vm_uuid" power-state=running`" ]; then
+  echo "VM $vm_name must be stopped first."
+  exit 1
+fi
+
+
+echo -n "Attaching $pusb_name ($pusb_uuid) to $vm_name ($vm_uuid)..."
+group_uuid=`xe usb-group-list PUSB-uuids="$pusb_uuid" --minimal`
+xe pusb-param-set uuid="$pusb_uuid" passthrough-enabled=true
+if [ -z "`xe vusb-list vm-uuid="$vm_uuid" usb-group-uuid="$group_uuid"`" ]; then
+  xe vusb-create usb-group-uuid="$group_uuid" vm-uuid="$vm_uuid" > /dev/null
+  if [ $? -eq 0 ]; then
+    echo "Attached"
+  else
+    echo "Failed."
+  fi
+else
+  echo "Already attached."
+fi

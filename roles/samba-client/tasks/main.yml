@@ -316,7 +316,7 @@
   - configure
 
 - name: Displaying ntp configuration
-  shell: "sntp 0.debian.pool.ntp.org"
+  shell: "sntp {{domain_controller_ip}}"
   ignore_errors: False
   register: results
   args:
@@ -376,7 +376,7 @@
   - configure
 
 - name: Synchronizing date and time
-  shell: "ntpdate -bu 0.debian.pool.ntp.org"
+  shell: "ntpdate -bu {{domain_controller_ip}}"
   ignore_errors: False
   register: results
   args:
@@ -526,7 +526,12 @@
     regexp: '{{item}}'
     state: absent
   with_items:
+  - '^\s*filter_users\s*=.*$'
+  - '^\s*filter_groups\s*=.*$'
+  - '^\s*access_provider\s*=\s*simple.*$'
   - '^\s*enumerate\s*=.*$'
+  - '^\s*sbus_timeout\s*=.*$'
+  - '^\s*dyndns_update\s*=.*$'
   - '^\s*use_fully_qualified_names\s*=.*$'
   tags:
   - install
@@ -542,6 +547,7 @@
   with_items:
   - 'enumerate = True'
   - 'use_fully_qualified_names = False'
+  - 'dyndns_update = False'
   tags:
   - install
   - configure
@@ -574,40 +580,6 @@
 
 - name: Checking configuration
   shell: "getent group 'domain admins'"
-  ignore_errors: False
-  register: results
-  args:
-    warn: no
-  tags:
-  - install
-  - configure
-
-- name: Display output
-  debug:
-    var: results
-  tags:
-  - install
-  - configure
-
-- name: Checking configuration
-  shell: "id administrator"
-  ignore_errors: False
-  register: results
-  args:
-    warn: no
-  tags:
-  - install
-  - configure
-
-- name: Display output
-  debug:
-    var: results
-  tags:
-  - install
-  - configure
-
-- name: Checking configuration
-  shell: "getent passwd administrator"
   ignore_errors: False
   register: results
   args:

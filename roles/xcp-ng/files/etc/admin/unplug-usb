@@ -1,0 +1,32 @@
+#!/bin/bash
+
+pusb_uuid="$1"
+
+if [ -z "$pusb_uuid" ]; then
+  echo "Usage: usb-unplug <pusb-uuid>"
+  exit 1
+fi
+
+group_uuid=`xe usb-group-list PUSB-uuids="$pusb_uuid" --minimal`
+
+if [ -z "$group_uuid" ]; then
+  echo "Could not find USB group."
+  exit 1
+fi
+
+vusb_uuid=`xe vusb-list usb-group-uuid="$group_uuid" --minimal`
+
+if [ -z "$vusb_uuid" ]; then
+  echo "Failed to find virtual USB."
+  exit 1
+fi
+
+# Unplug from running VM
+vm_uuid=`xe vusb-list usb-group-uuid="$group_uuid" | grep vm-uuid | sed -E 's/^.*: //g'`
+if ! [ -z "`xe vm-list uuid="$vm_uuid" power-state=running`" ]; then
+  xe vusb-unplug uuid="$vusb_uuid"
+fi
+
+xe vusb-destroy uuid="$vusb_uuid"
+
+xe pusb-param-set uuid="$pusb_uuid" passthrough-enabled=false

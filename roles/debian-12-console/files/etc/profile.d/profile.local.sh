@@ -1,3 +1,4 @@
+#!/bin/bash
 set +o history
 
 rm ~/*.tmp >/dev/null 2>&1

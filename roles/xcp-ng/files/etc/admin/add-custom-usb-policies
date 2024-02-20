@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# find information about which device you want to add a policy for with:
+# lsusb
+#     Bus 001 Device 049: ID 1cf1:0030 Dresden Elektronik
+# =>
+# ALLOW:vid=1cf1 pid=0030 # Dresden Elektronik
+
+# add the following policies to usb-policy.conf if they don't already exist
+USB_POLICY_DRESDEN="ALLOW:vid=1cf1 pid=0030 # Dresden Elektronik"
+USB_POLICY_BLUETOOTH="ALLOW:vid=0b05 pid=190e # Asus USB-BT500"
+
+POLICY_FILE="/etc/xensource/usb-policy.conf"
+
+for POLICY in "${USB_POLICY_DRESDEN}" "${USB_POLICY_BLUETOOTH}"; do
+  # -q be quiet
+  # -x match the whole line
+  # -F pattern is a plain string
+  grep -xqF -- "$POLICY" "$POLICY_FILE" || sed -i "1s/^/${POLICY}\n/" "$POLICY_FILE"
+done
+
+# NOTE: assumes you only have one host...
+xe pusb-scan host-uuid=$(xe host-list --minimal)

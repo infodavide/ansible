@@ -1,0 +1,19 @@
+#!/bin/bash
+
+function get-vm-uuid-by-name() {
+  vm_name="$1"
+  xe vm-list name-label="$vm_name" --minimal
+}
+
+function get-usb-uuid-by() {
+  key="$1"
+  value="$2"
+  xe pusb-list $key="$value" --minimal
+}
+
+# Below list all the connections you want made automatically on boot
+
+# The name here ("Example Disk Name") is the pusb product-desc,
+# which you can find with: xe pusb-list params=uuid,product-desc
+
+plug-usb "`get-usb-uuid-by product-desc "Example Disk Name"`" "`get-vm-uuid-by-name "Some VM Name"`"

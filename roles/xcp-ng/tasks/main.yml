@@ -6,7 +6,7 @@
     group: root
     mode: 0664
   tags:
-  - always
+  - install
 
 - name: Setting scripts permissions
   shell: "chmod 777 /etc/admin/*.sh"
@@ -14,19 +14,23 @@
   args:
     warn: no
   tags:
-  - always
+  - install
 
 - name: Create symbolic link for xe-custom-startup.sh
   file:
     src: "/etc/admin/xe-custom-startup.sh"
     dest: "/etc/rc.d/init.d/xe-custom-startup.sh"
     state: link
+  tags:
+  - install
 
 - name: Create symbolic link for xe-custom-shutdown.sh
   file:
     src: "/etc/admin/xe-custom-shutdown.sh"
     dest: "/etc/rc.d/init.d/xe-custom-shutdown.sh"
     state: link
+  tags:
+  - install
 
 - name: Create rc.d symbolic link for xe-custom-startup.sh
   file:
@@ -39,6 +43,8 @@
   - "/etc/rc.d/rc3.d/S99xe-custom-startup.sh"
   - "/etc/rc.d/rc4.d/S99xe-custom-startup.sh"
   - "/etc/rc.d/rc5.d/S99xe-custom-startup.sh"
+  tags:
+  - install
 
 - name: Create rc.d symbolic link for xe-custom-shutdown.sh
   file:
@@ -53,6 +59,8 @@
   - "/etc/rc.d/rc4.d/K01xe-custom-shutdown.sh"
   - "/etc/rc.d/rc5.d/K01xe-custom-shutdown.sh"
   - "/etc/rc.d/rc6.d/K01xe-custom-shutdown.sh"
+  tags:
+  - install
 
 - name: Create /volume1 directory
   ansible.builtin.file:
@@ -61,6 +69,8 @@
     owner: root
     group: root
     mode: 0777
+  tags:
+  - install
 
 - name: Create /volume2 directory
   ansible.builtin.file:
@@ -69,6 +79,8 @@
     owner: root
     group: root
     mode: 0777
+  tags:
+  - install
 
 - name: Ensure fstab uses /volume1
   mount:
@@ -77,6 +89,8 @@
     fstype: "ext4"
     opts: "rw,nosuid,nodev,noatime"
     state: present
+  tags:
+  - install
 
 - name: Ensure fstab uses /volume2
   mount:
@@ -85,3 +99,5 @@
     fstype: "ext4"
     opts: "rw,nosuid,nodev,noatime"
     state: present
+  tags:
+  - install

@@ -1,3 +1,42 @@
+- name: Copying configuration
+  copy:
+    src: files/etc/
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+  - install
+  - update
+
+- name: Setting scripts permissions
+  shell: "chmod 777 /etc/admin/*.sh"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - update
+
+- name: Copying ups scheduling script
+  shell: "cp /etc/nut/upssched-cmd /bin/upssched-cmd"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - update
+
+- name: Set permissions on ups scheduling script
+  file:
+    path: /bin/upssched-cmd
+    owner: root
+    group: nut
+    mode: '0770'
+  tags:
+  - install
+  - update
+
 - name: Updating packages
   shell: apt-get update -y && apt-get upgrade -y
   when: ansible_distribution == 'Debian'
@@ -29,7 +68,7 @@
   - update
 
 - name: Ensure group xoa exists
-  ansible.builtin.group:
+  group:
     name: xoa
     state: present
   tags:
@@ -45,7 +84,7 @@
   - update
 
 - name: Add the xoa user
-  ansible.builtin.user:
+  user:
     name: xoa
     shell: /bin/bash
     home: /home/xoa
@@ -59,7 +98,7 @@
   - update
 
 - name: Register xoa in sudoers.d
-  ansible.builtin.file:
+  file:
     path: /etc/sudoers.d/xoa
     owner: root
     group: root
@@ -98,7 +137,7 @@
   - update
 
 - name: Download installation script
-  ansible.builtin.get_url:
+  get_url:
     url: "{{xoa_install_url}}"
     dest: "/tmp/{{xoa_install_script}}"
     mode: '0770'
@@ -108,7 +147,7 @@
   - update
 
 - name: Download update script
-  ansible.builtin.get_url:
+  get_url:
     url: "{{xoa_update_url}}"
     dest: "/home/xoa/{{xoa_update_script}}"
     mode: '0770'
@@ -127,7 +166,7 @@
 
 - name: Removing existing data structures
   shell: "rm -R /var/lib/xo-server"
-  ignore_errors: False
+  ignore_errors: True
   args:
     warn: no
   when: not xen_orchestra_directory.stat.exists
@@ -136,7 +175,7 @@
 
 - name: Removing existing data structures
   shell: "rm -R /var/lib/xo-updater"
-  ignore_errors: False
+  ignore_errors: True
   args:
     warn: no
   when: not xen_orchestra_directory.stat.exists
@@ -145,7 +184,7 @@
 
 - name: Removing existing redis data
   shell: "redis-cli -n 0 FLUSHALL"
-  ignore_errors: False
+  ignore_errors: True
   args:
     warn: no
   when: not xen_orchestra_directory.stat.exists
@@ -182,6 +221,34 @@
   - install
   - update
 
+- name: Rebuild the xo-web
+  shell: "yarn build"
+  ignore_errors: False
+  args:
+    chdir: /opt/xen-orchestra/packages/xo-web/src/xo-app
+    warn: no
+  when: xen_orchestra_directory.stat.exists
+  tags:
+  - install
+  - update
+
+- name: Start service
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+  - xo-server
+  tags:
+  - install
+  - update
+
+- name: Wait for port 80 to become open on the host, don't start checking for 10 seconds
+  wait_for:
+    host: 0.0.0.0
+    port: 80
+    delay: 10
+  tags:
+  - install
+  - update
+
 - name: Closing existing session using xo-cli
   shell: "xo-cli --unregister"
   ignore_errors: True
@@ -202,7 +269,7 @@
 
 - name: Adding user session using xo-cli
   shell: "xo-cli user.create email='{{xoa_user}}' password='{{xoa_password}}' permission='admin'"
-  ignore_errors: False
+  ignore_errors: True
   args:
     warn: no
   tags:
@@ -218,7 +285,7 @@
   - install
   - update
 
-- name: Opening session using xo-cli
+- name: Reopening session using xo-cli
   shell: "xo-cli --register --au http://127.0.0.1 {{xoa_user}} {{xoa_password}}"
   ignore_errors: False
   args:
@@ -230,7 +297,7 @@
 
 - name: Adding xcp-ng servers using xo-cli
   shell: "xo-cli server.add label='{{item.label}}' host='{{item.ip}}' username={{xcpng_user}} password='{{xcpng_password}}' autoConnect=true allowUnauthorized=true"
-  ignore_errors: False
+  ignore_errors: True
   with_items: "{{xcpng_servers}}"
   args:
     warn: no
@@ -249,71 +316,52 @@
   - install
   - update
 
-- name: Stopping service
-  systemd: enabled=yes state=halted daemon_reload=yes name={{item}}
-  with_items:
-    - xo-server
-  when: remove_banner == 'yes'
-  tags:
-  - install
-  - update
-
-- name: Remove banner
+- name: Remove warnings associated with source building
   replace:
     path: /opt/xen-orchestra/packages/xo-web/src/xo-app/index.js
-    regexp: "{{item}}"
-    replace: '// \1'
+    regexp: "{{item.regexp}}"
+    replace: "{{item.replace}}"
+    backup: true
   with_items:
-  - 'this\.displayOpenSourceDisclaimer\(\)'
-  when: remove_banner == 'yes'
+  - {regexp: '(this\.displayOpenSourceDisclaimer\(\))', replace: '/* \1 */'}
+  - {regexp: '^(.*dismissedSourceBanner:)\s*Boolean.*$', replace: '\1 true,'}
+  - {regexp: '^(.*dismissedTrialBanner:)\s*Boolean.*$', replace: '\1 true,'}
+  - {regexp: '^(.*registerNeeded:)\s*state\..*$.*$', replace: '\1 false,'}
+  when: remove_xoa_source_warnings
   tags:
   - install
   - update
 
-- name: Remove menu
+- name: Remove warnings associated with source building in menu
   replace:
     path: /opt/xen-orchestra/packages/xo-web/src/xo-app/menu/index.js
     regexp: "{{item.regexp}}"
     replace: "{{item.replace}}"
+    backup: true
   with_items:
-  - {regexp: "(\\s*\\{.*to:\\s*'xoa/notifications')", replace: '/* \1'}
-  - {regexp: "(\\s*isAdmin\\s*&&\\s*{.*to:\\s* '\/settings\/servers')", replace: '*/ \1'}
-  - {regexp: "!isAdmin\\s*||\\s*xoaState\\s*===\\s*'upToDate'\\s*\\?\\s*null\\s*:\\s*<UpdateTag\\s*key='update'\\s*\/>", replace: 'null'}
-  when: remove_banner == 'yes'
+  - {regexp: "(\\{\\s*to:.*isAdmin.*'xoa\\/notifications')", replace: '/* \1'}
+  - {regexp: "\\},(\\s*.*\\s*to:\\s*'\\/settings\\/servers',\\s*icon:\\s*'menu-settings',)", replace: '},*/ \1'}
+  when: remove_xoa_source_warnings
   tags:
   - install
   - update
 
-- name: Remove banner
-  replace:
-    path: /opt/xen-orchestra/packages/xo-web/src/xo-app/index.js
-    regexp: "{{item.regexp}}"
-    replace: "{{item.replace}}"
-  with_items:
-  - {regexp: '^(.*dismissedSourceBanner:).*$', replace: '\1 true,'}
-  - {regexp: '^(.*dismissedTrialBanner:).*$', replace: '\1 true,'}
-  - {regexp: '^(.*registerNeeded:).*$', replace: '\1 false,'}
-  when: remove_banner == 'yes'
-  tags:
-  - install
-  - update
-
-- name: Rebuild the xo-web after banner removal
+- name: Rebuild the xo-web after warnings removal
   shell: "yarn build"
   ignore_errors: False
   args:
     chdir: /opt/xen-orchestra/packages/xo-web/src/xo-app
     warn: no
-  when: remove_banner == 'yes'
+  when: remove_xoa_source_warnings
   tags:
   - install
   - update
 
-- name: Start service
+- name: Start services
   systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
   with_items:
-    - xo-server
-  when: remove_banner == 'yes'
+  - xo-server
+  when: remove_xoa_source_warnings
   tags:
   - install
   - update

@@ -1,0 +1,19 @@
+#! /bin/sh
+
+case $1 in
+        onbattwarn)
+                # Send a notification mail
+                echo "The UPS has been on battery for a while" | mail -s"UPS monitor" root@localhost
+                # Create a flag-file on the filesystem
+                /usr/bin/touch /tmp/ups-on-battery
+                ssh root@genova "/sbin/shutdown -fh +5"
+                ;;
+        ups-back-on-power)
+                # Delete the flag-file on the filesystem
+                /bin/rm -f /tmp/ups-on-battery
+                ssh root@genova "/sbin/shutdown -c"
+                ;;
+        *)
+                logger -t upssched-cmd "Unrecognized command: $1"
+                ;;
+esac

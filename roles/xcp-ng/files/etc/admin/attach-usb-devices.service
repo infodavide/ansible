@@ -1,0 +1,14 @@
+[Unit]
+Description=Automatically attach USB devices on startup
+Wants=xapi-init-complete.target
+# Runs BEFORE xapi-domains.service which is when VMS are autostarted
+Before=xapi-domains.service
+After=remote-fs.target xapi-init-complete.target xapi.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/attach-usb-devices
+
+[Install]
+WantedBy=multi-user.target

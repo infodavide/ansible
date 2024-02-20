@@ -13,3 +13,4 @@ xoa_password: xoa
 xcpng_servers: [{"label": "localhost", "ip": "127.0.1"}]
 xcpng_user: root
 xcpng_password: xcpng
+remove_xoa_source_warnings: False
