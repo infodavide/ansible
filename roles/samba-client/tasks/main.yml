@@ -98,6 +98,16 @@
   - install
   - configure
 
+- name: Recreating samba logs directory
+  shell: "mkdir -p /var/log/samba"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
 - name: Removing sssd logs
   shell: "rm /var/log/sssd/*"
   ignore_errors: True
@@ -107,8 +117,44 @@
   - install
   - configure
 
+- name: Recreating sssd logs directory
+  shell: "mkdir -p /var/log/sssd"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Recreating sssd configuration directory
+  shell: "mkdir /etc/sssd"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
 - name: Removing sssd db
   shell: "rm -f /var/lib/sss/db/*"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Recreating sssd db directory
+  shell: "mkdir -p /var/lib/sss/db"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Recreating sssd db directory
+  shell: "mkdir -p /var/lib/sss/pipes/private"
   ignore_errors: True
   args:
     warn: no
@@ -492,9 +538,26 @@
   - install
   - configure
 
+- name: Leaving domain
+  shell: "echo '{{administrator_password}}'|realm -v leave --user=administrator {{internal_domain|upper}}.LOCAL"
+  ignore_errors: True
+  register: results
+  args:
+    warn: no
+  tags:
+  - install
+  - configure
+
+- name: Display output
+  debug:
+    var: results
+  tags:
+  - install
+  - configure
+
 - name: Joining domain
   shell: "echo '{{administrator_password}}'|realm -v join --user=administrator {{internal_domain|upper}}.LOCAL"
-  ignore_errors: True
+  ignore_errors: False
   register: results
   args:
     warn: no
