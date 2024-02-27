@@ -1,0 +1,5 @@
+\w{3} [ :0-9]{11} [._[:alnum:]-]+ containerd\[[0-9]+\]:.*shim disconnected.*
+\w{3} [ :0-9]{11} [._[:alnum:]-]+ containerd\[[0-9]+\]:.*cleaning up.*
+\w{3} [ :0-9]{11} [._[:alnum:]-]+ containerd\[[0-9]+\]:.*cleanup.*
+\w{3} [ :0-9]{11} [._[:alnum:]-]+ systemd\[[0-9]+\]: docker.*Consumed.*
+\w{3} [ :0-9]{11} [._[:alnum:]-]+ systemd\[[0-9]+\]: docker.service: Consumed.*

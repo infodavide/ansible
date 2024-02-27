@@ -189,7 +189,16 @@
     mode: 0664
   tags:
   - install
-  - configure
+  - update
+
+- name: Setting scripts permissions
+  shell: "chmod 777 /etc/admin/*.sh"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - update
 
 - name: "Retrieving IPv4 of interface: {{network_interface}}"
   shell: "ip addr show|grep -a3 {{network_interface}}|grep -v inet6|grep inet|cut -d/ -f1|awk '{print $2}'| sed 's/\\s*//'"
@@ -202,7 +211,7 @@
   - install
   - configure
 
-- name: Display IPv4
+- name: Displaying IPv4
   debug:
     var: ip_v4
   tags:
@@ -220,7 +229,7 @@
   - install
   - configure
 
-- name: Display current hostname
+- name: Displaying current hostname
   debug:
     var: current_hostname
   tags:
@@ -264,7 +273,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -309,7 +318,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -354,7 +363,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -371,7 +380,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -414,7 +423,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -431,7 +440,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -474,7 +483,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -531,7 +540,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -548,14 +557,14 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
   - install
   - configure
 
-- name: Joining domain
+- name: Joining the domain
   shell: "echo '{{administrator_password}}'|realm -v join --user=administrator {{internal_domain|upper}}.LOCAL"
   ignore_errors: False
   register: results
@@ -565,7 +574,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -625,7 +634,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -651,7 +660,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:

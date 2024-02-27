@@ -9,7 +9,7 @@
   - always
   - install
 
-- name: Display current hostname
+- name: Displaying current hostname
   debug:
     var: current_hostname
 
@@ -23,14 +23,14 @@
   tags:
   - always
 
-- name: Create the k3s group
+- name: Creating the k3s group
   group:
     name: k3s
   tags:
   - install
   - configure
 
-- name: Create the k3s user to be able to exchange files on the cluster for configuration
+- name: Creating the k3s user to be able to exchange files on the cluster for configuration
   user:
     name: "{{k3s_user}}"
     shell: /bin/bash
@@ -45,17 +45,17 @@
   - install
   - configure
 
-- name: Check if k3s is already installed
+- name: Checking if k3s is already installed
   command: which k3s
   changed_when: false
   ignore_errors: true
   register: k3s_check_command
 
-- name: Display k3s check command
+- name: Displaying k3s check command
   debug:
     var: k3s_check_command
 
-- name: Check k3s status
+- name: Checking k3s status
   fail:
     msg: "k3s is not installed"
   when: k3s_check_command.rc != 0
@@ -65,11 +65,11 @@
   set_fact:
     k3s_installation_status: "{{k3s_check_command.rc == 0}}"
 
-- name: Display k3s installation status
+- name: Displaying k3s installation status
   debug:
     var: k3s_installation_status
 
-- name: Create K3S directory
+- name: Creating K3S directory
   file:
     path: "/etc/rancher/k3s"
     state: directory
@@ -84,6 +84,15 @@
   when: not k3s_installation_status
   tags:
   - always
+
+- name: Setting scripts permissions
+  shell: "chmod 777 /etc/admin/*.sh"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - update
 
 - name: Removing packages
   package: name={{item}} state=present
@@ -113,7 +122,7 @@
   - install
   - configure
 
-- name: Installation
+- name: Installing
   shell: "curl -sfL {{k3s_url}} | INSTALL_K3S_EXEC='agent' K3S_URL=https://{{k3s_master_ip}}:{{k3s_master_port}} K3S_TOKEN={{k3s_node_token}} sh -"
   ignore_errors: False
   args:
@@ -123,7 +132,7 @@
   tags:
   - install
 
-- name: Create aliases
+- name: Creating aliases
   shell: "touch /etc/profile.d/00-aliases.sh && chown root.root /etc/profile.d/00-aliases.sh && chmod 776 /etc/profile.d/00-aliases.sh"
   ignore_errors: False
   args:
@@ -132,7 +141,7 @@
   tags:
   - always
 
-- name: Update global aliases
+- name: Updating global aliases
   lineinfile:
     path: /etc/profile.d/00-aliases.sh
     backup: no
@@ -145,14 +154,14 @@
   tags:
   - always
 
-- name: Create /root/.kube directory
+- name: Creating /root/.kube directory
   file:
     path: /root/.kube
     state: directory
   tags:
   - always
 
-- name: "Set configuration into .kube directory"
+- name: "Setting configuration into .kube directory"
   shell: "kubectl config view --raw>~/.kube/config"
   ignore_errors: False
   args:
@@ -161,7 +170,7 @@
   tags:
   - always
 
-- name: "Set worker label for the node"
+- name: "Setting worker label for the node"
   shell: "sshpass -p '{{k3s_password}}' ssh -o StrictHostKeyChecking=no {{k3s_user}}@{{k3s_master_ip}} 'kubectl label node {{current_hostname.stdout}} node-role.kubernetes.io/worker=worker'"
   ignore_errors: False
   args:
@@ -171,16 +180,14 @@
   - always
   - configure
 
-
-
-- name: Reboot the server
+- name: Rebooting the server
   shell: "sleep 4 && reboot"
   async: 1
   poll: 0
   tags:
   - install
 
-- name: Wait for the reboot to complete if there was a change.
+- name: Waiting for the reboot to complete if there was a change.
   wait_for_connection:
     connect_timeout: 10
     sleep: 5

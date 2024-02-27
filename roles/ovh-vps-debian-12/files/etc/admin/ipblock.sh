@@ -1,9 +1,9 @@
 #!/bin/bash
 #set -x
 ### Block all traffic from listed. Use ISO code ###
-ISO_IN="ae af ao az bf bh bi bj br bt bw cg co cm cn sg cu dz eg et id il in iq ir ke kh kw lr ly ma ml mr my na ne ng om pk qa ro sn sr sy th tr tm tw kp kr ru ir ve vn ye"
+ISO_IN="ae af ao az bf bh bi bj br bt bw cg co cm cn sg cu dz eg et id il in iq ir ke kh kw lr ly ma ml mr my na ne ng np om pk qa ro sn sr sy th tr tm tw kp kr ru ir ve vn ye"
 #ISO_IN="kp kr"
-ISO_OUT="ae af ao az bf bh bi bj br bt bw cg co cm cn sg cu dz eg et id il in iq ir ke kh kw lr ly ma ml mr my na ne ng om pk qa ro sn sr sy th tr tm tw kp kr ir ve vn ye"
+ISO_OUT="ae af ao az bf bh bi bj br bt bw cg co cm cn sg cu dz eg et id il in iq ir ke kh kw lr ly ma ml mr my na ne ng np om pk qa ro sn sr sy th tr tm tw kp kr ir ve vn ye"
 #Testing
 #ISO_IN="kr"
 EXTIF=eth0

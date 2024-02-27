@@ -27,7 +27,7 @@
   - install
   - update
 
-- name: Set permissions on ups scheduling script
+- name: Setting permissions on ups scheduling script
   file:
     path: /bin/upssched-cmd
     owner: root
@@ -59,7 +59,7 @@
   - install
   - update
 
-- name: Check if xoa is already installed
+- name: Checking if xoa is already installed
   stat:
     path: /opt/xen-orchestra
   register: xen_orchestra_directory
@@ -67,7 +67,7 @@
   - install
   - update
 
-- name: Ensure group xoa exists
+- name: Ensuring group xoa exists
   group:
     name: xoa
     state: present
@@ -75,7 +75,7 @@
   - install
   - update
 
-- name: Check if xoa is already registered in sudoers.d
+- name: Checking if xoa is already registered in sudoers.d
   stat:
     path: /etc/sudoers.d/xoa
   register: xoa_sudoers_file
@@ -83,7 +83,7 @@
   - install
   - update
 
-- name: Add the xoa user
+- name: Adding the xoa user
   user:
     name: xoa
     shell: /bin/bash
@@ -97,7 +97,7 @@
   - install
   - update
 
-- name: Register xoa in sudoers.d
+- name: Registering xoa in sudoers.d
   file:
     path: /etc/sudoers.d/xoa
     owner: root
@@ -108,7 +108,7 @@
   - install
   - update
 
-- name: Allow xoa to have passwordless sudo
+- name: Allowing xoa to have passwordless sudo
   lineinfile:
     dest: /etc/sudoers.d/xoa
     state: present
@@ -136,7 +136,7 @@
   - install
   - update
 
-- name: Download installation script
+- name: Downloading installation script
   get_url:
     url: "{{xoa_install_url}}"
     dest: "/tmp/{{xoa_install_script}}"
@@ -146,7 +146,7 @@
   - install
   - update
 
-- name: Download update script
+- name: Downloading update script
   get_url:
     url: "{{xoa_update_url}}"
     dest: "/home/xoa/{{xoa_update_script}}"
@@ -155,7 +155,7 @@
   - install
   - update
 
-- name: Create symbolic link to
+- name: Creating symbolic link to
   file:
     src: "/home/xoa/{{xoa_update_script}}"
     dest: "/etc/cron.weekly/{{xoa_update_script}}"
@@ -221,7 +221,7 @@
   - install
   - update
 
-- name: Rebuild the xo-web
+- name: Rebuilding the xo-web
   shell: "yarn build"
   ignore_errors: False
   args:
@@ -232,7 +232,7 @@
   - install
   - update
 
-- name: Start service
+- name: Starting service
   systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
   with_items:
   - xo-server
@@ -240,7 +240,7 @@
   - install
   - update
 
-- name: Wait for port 80 to become open on the host, don't start checking for 10 seconds
+- name: Waiting for port 80 to become open on the host, don't start checking for 10 seconds
   wait_for:
     host: 0.0.0.0
     port: 80
@@ -316,7 +316,7 @@
   - install
   - update
 
-- name: Remove warnings associated with source building
+- name: Removing warnings associated with source building
   replace:
     path: /opt/xen-orchestra/packages/xo-web/src/xo-app/index.js
     regexp: "{{item.regexp}}"
@@ -332,7 +332,7 @@
   - install
   - update
 
-- name: Remove warnings associated with source building in menu
+- name: Removing warnings associated with source building in menu
   replace:
     path: /opt/xen-orchestra/packages/xo-web/src/xo-app/menu/index.js
     regexp: "{{item.regexp}}"
@@ -346,7 +346,7 @@
   - install
   - update
 
-- name: Rebuild the xo-web after warnings removal
+- name: Rebuilding the xo-web after warnings removal
   shell: "yarn build"
   ignore_errors: False
   args:
@@ -357,7 +357,7 @@
   - install
   - update
 
-- name: Start services
+- name: Starting services
   systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
   with_items:
   - xo-server

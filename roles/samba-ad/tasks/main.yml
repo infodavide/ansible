@@ -216,7 +216,16 @@
     mode: 0664
   tags:
   - install
-  - configure
+  - update
+
+- name: Setting scripts permissions
+  shell: "chmod 777 /etc/admin/*.sh"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - update
 
 - name: "Retrieving IPv4 of interface: {{network_interface}}"
   shell: "ip addr show|grep -a3 {{network_interface}}|grep -v inet6|grep inet|cut -d/ -f1|awk '{print $2}'| sed 's/\\s*//'"
@@ -229,7 +238,7 @@
   - install
   - configure
 
-- name: Display IPv4
+- name: Displaying IPv4
   debug:
     var: ip_v4
   tags:
@@ -247,7 +256,7 @@
   - install
   - configure
 
-- name: Display current hostname
+- name: Displaying current hostname
   debug:
     var: current_hostname
   tags:
@@ -309,7 +318,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -326,7 +335,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -371,7 +380,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -391,6 +400,7 @@
   tags:
   - install
   - configure
+
 - name: Setting resolv configuration
   lineinfile:
     path: /etc/resolv.conf
@@ -415,7 +425,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -460,7 +470,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -477,7 +487,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -596,7 +606,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -630,7 +640,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -660,7 +670,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -745,7 +755,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -794,7 +804,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -823,7 +833,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -867,14 +877,14 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
   - install
   - configure
 
-- name: Change file ownership, group and permissions for named
+- name: Changing file ownership, group and permissions for named
   file:
     path: /var/lib/samba/bind-dns
     owner: root
@@ -902,7 +912,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -920,7 +930,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -948,13 +958,13 @@
   tags:
   - install
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
   - install
 
-- name: Extract IPv4
+- name: Extracting IPv4
   shell: " echo '{{ip_v4.stdout}}'|cut -d'.' -f4"
   ignore_errors: True
   register: results
@@ -963,7 +973,7 @@
   tags:
   - install
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -978,13 +988,13 @@
   tags:
   - install
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
   - install
 
-- name: Initialize kerberos
+- name: Initializing kerberos
   shell: "samba-tool domain exportkeytab /etc/krb5.keytab"
   ignore_errors: True
   register: results
@@ -994,7 +1004,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1021,7 +1031,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1038,7 +1048,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1064,7 +1074,7 @@
 #   - install
 #   - configure
 
-# - name: Display output
+# - name: Displaying output
 #   debug:
 #     var: results
 #   tags:
@@ -1091,7 +1101,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1116,7 +1126,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1133,7 +1143,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1150,7 +1160,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1167,7 +1177,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1184,7 +1194,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1201,7 +1211,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1218,7 +1228,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1235,7 +1245,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1252,7 +1262,7 @@
   - install
   - configure
 
-- name: Display output
+- name: Displaying output
   debug:
     var: results
   tags:
@@ -1270,7 +1280,7 @@
 #  - always
 #  - cockpit
 
-# - name: Display output
+# - name: Displaying output
 #   debug:
 #     var: results
 #   tags:
@@ -1288,7 +1298,7 @@
 #   - install
 #   - configure
 
-# - name: Display output
+# - name: Displaying output
 #   debug:
 #     var: results
 #   tags:

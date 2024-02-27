@@ -1,3 +1,22 @@
 # defaults file
 new_hostname:
 secured: False
+logrotate_rotate: 7
+logrotate_maxage: 62
+logrotate_size: 2M
+ssh_port: 22
+firewall: ufw
+mail: msmtp
+mail_host: smtp.mydomain.com
+mail_from: contact@mydomain.com
+mail_port: 465
+mail_user:
+mail_password:
+email: contact@mydomain.com
+# encrypt password using: mkpasswd --method=sha-512
+users: [{"name": "user1", "home": "/home/user1", "group": "users", "password": "", "sudo": true}]
+encoding: UTF-8
+locale: it_IT
+locale_encoding: it_IT.UTF-8
+keymaps_url: https://mirrors.edge.kernel.org/pub/linux/utils/kbd/kbd-2.5.1.tar.gz
+firewall_items: [{"port": 22, "proto": "tcp"}, {"port": 222, "proto": "tcp"}, {"port": 80, "proto": "tcp"}, {"port": 443, "proto": "tcp"}]

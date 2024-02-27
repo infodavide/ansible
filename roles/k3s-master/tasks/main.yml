@@ -1,3 +1,23 @@
+- name: Copying configuration
+  copy:
+    src: files/etc/
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+  - install
+  - update
+
+- name: Setting scripts permissions
+  shell: "chmod 777 /etc/admin/*.sh"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - update
+
 - name: Updating packages
   shell: apt-get update -y && apt-get upgrade -y
   when: ansible_distribution == 'Debian'
@@ -8,14 +28,14 @@
   tags:
   - install
 
-- name: Create the k3s group
+- name: Creating the k3s group
   group:
     name: k3s
   tags:
   - install
   - configure
 
-- name: Create the k3s user to be able to exchange files on the cluster for configuration
+- name: Creating the k3s user to be able to exchange files on the cluster for configuration
   user:
     name: "{{k3s_user}}"
     shell: /bin/bash
@@ -30,7 +50,7 @@
   - install
   - configure
 
-- name: Check if k3s is already installed
+- name: Checking if k3s is already installed
   command: which k3s
   changed_when: false
   ignore_errors: true
@@ -38,13 +58,13 @@
   tags:
   - install
 
-- name: Display k3s check command
+- name: Displaying k3s check command
   debug:
     var: k3s_check_command
   tags:
   - install
 
-- name: Check k3s status
+- name: Checking k3s status
   fail:
     msg: "k3s is not installed"
   when: k3s_check_command.rc != 0
@@ -58,13 +78,13 @@
   tags:
   - install
 
-- name: Display k3s installation status
+- name: Displaying k3s installation status
   debug:
     var: k3s_installation_status
   tags:
   - install
 
-- name: Create K3S directory
+- name: Creating K3S directory
   file:
     path: "/etc/rancher/k3s"
     state: directory
@@ -103,7 +123,7 @@
   tags:
   - install
 
-- name: Installation
+- name: Installing
   shell: "curl -sfL {{k3s_url}} | INSTALL_K3S_EXEC='server' sh -s"
   ignore_errors: False
   args:
@@ -113,7 +133,7 @@
   tags:
   - install
 
-- name: Installation
+- name: Installing
   shell: "systemctl status k3s"
   ignore_errors: False
   args:
@@ -133,14 +153,14 @@
   - install
   - configure
 
-- name: Display IPv4
+- name: Displaying IPv4
   debug:
     var: ip_v4
   tags:
   - install
   - configure
 
-- name: Create aliases
+- name: Creating aliases
   shell: "touch /etc/profile.d/00-aliases.sh && chown root.root /etc/profile.d/00-aliases.sh && chmod 776 /etc/profile.d/00-aliases.sh"
   ignore_errors: False
   args:
@@ -150,7 +170,7 @@
   - install
   - configure
 
-- name: Update global aliases
+- name: Updating global aliases
   lineinfile:
     path: /etc/profile.d/00-aliases.sh
     backup: no
@@ -164,7 +184,7 @@
   - install
   - configure
 
-- name: Export KUBECONFIG environment variable
+- name: Exporting KUBECONFIG environment variable
   lineinfile:
     path: /etc/profile
     backup: no
@@ -177,7 +197,7 @@
   - install
   - configure
 
-- name: "Configuration to listen on interface: {{network_interface}}"
+- name: "Configuring to listen on interface: {{network_interface}}"
   shell: "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && kubectl config set-cluster default --server=https://{{ip_v4.stdout}}:6443"
   ignore_errors: False
   args:
@@ -187,7 +207,7 @@
   - install
   - configure
 
-- name: Configuration
+- name: Configuring
   replace:
     path: /etc/rancher/k3s/k3s.yaml
     regexp: "{{item.regexp}}"
@@ -198,7 +218,7 @@
   - install
   - configure
 
-- name: Set environment configuration
+- name: Setting environment configuration
   file:
     path: /etc/systemd/system/k3s.service.env
     state: file
@@ -206,7 +226,7 @@
   - install
   - configure
 
-- name: Export K3S_KUBECONFIG_MODE variable
+- name: Exporting K3S_KUBECONFIG_MODE variable
   lineinfile:
     path: /etc/systemd/system/k3s.service.env
     backup: no
@@ -218,7 +238,7 @@
   - install
   - configure
 
-- name: Create /root/.kube directory
+- name: Creating /root/.kube directory
   file:
     path: /root/.kube
     state: directory
@@ -226,7 +246,7 @@
   - install
   - configure
 
-- name: "Set configuration into .kube directory"
+- name: "Setting configuration into .kube directory"
   shell: "kubectl config view --raw>~/.kube/config"
   ignore_errors: False
   args:
@@ -236,14 +256,14 @@
   - install
   - configure
 
-- name: Reboot the server
+- name: Rebooting the server
   shell: "sleep 4 && reboot"
   async: 1
   poll: 0
   tags:
   - install
 
-- name: Wait for the reboot to complete if there was a change.
+- name: Waiting for the reboot to complete if there was a change.
   wait_for_connection:
     connect_timeout: 10
     sleep: 5
@@ -252,7 +272,7 @@
   tags:
   - install
 
-- name: Check if Cilium is installed
+- name: Checking if Cilium is installed
   shell: cilium version
   register: cilium_version
   changed_when: false
@@ -261,14 +281,14 @@
   - install
   - cilium
 
-- name: Display Cilium version
+- name: Displaying Cilium version
   debug:
     var: cilium_version.stdout_lines
   tags:
   - install
   - cilium
 
-- name: Get Cilium version
+- name: Getting Cilium version
   shell: curl -s {{cilium_version_url}}
   when: cilium_version.rc != 0
   register: cilium_cli_version
@@ -276,12 +296,12 @@
   - install
   - cilium
 
-- name: Display Cilium version
+- name: Displaying Cilium version
   debug:
     var: cilium_cli_version
   when: cilium_version.rc != 0
 
-- name: Set Cilium variables
+- name: Setting Cilium variables
   set_fact:
     current_os: "{{ansible_system|lower}}"
     current_arch: "{{'amd64' if ansible_architecture == 'x86_64' else 'arm64'}}"
@@ -291,7 +311,7 @@
   - install
   - cilium
 
-- name: Download Cilium tarball and checksum
+- name: Downloading Cilium tarball and checksum
   get_url:
     url: "{{cilium_url}}/{{cilium_cli_version}}/cilium-{{current_os}}-{{current_arch}}.tar.gz"
     dest: "/tmp/cilium-{{current_os}}-{{current_arch}}.tar.gz"
@@ -301,7 +321,7 @@
   - install
   - cilium
 
-- name: Download Cilium checksum
+- name: Downloading Cilium checksum
   get_url:
     url: "{{cilium_url}}/{{cilium_cli_version}}/cilium-{{current_os}}-{{current_arch}}.tar.gz.sha256sum"
     dest: "/tmp/cilium-{{current_os}}-{{current_arch}}.tar.gz.sha256sum"
@@ -311,7 +331,7 @@
   - install
   - cilium
 
-- name: Verify Cilium tarball checksum
+- name: Verifying Cilium tarball checksum
   shell: "sha256sum -c /tmp/cilium-{{current_os}}-{{current_arch}}.tar.gz.sha256sum"
   args:
     chdir: "/tmp"
@@ -322,7 +342,7 @@
   - install
   - cilium
 
-- name: Extract Cilium tarball
+- name: Extracting Cilium tarball
   unarchive:
     src: "/tmp/cilium-{{current_os}}-{{current_arch}}.tar.gz"
     dest: /usr/local/bin
@@ -333,7 +353,7 @@
   - install
   - cilium
 
-- name: Clean up Cilium tarball and checksum
+- name: Cleaning up Cilium tarball and checksum
   file:
     path: "/tmp/cilium-{{current_os}}-{{current_arch}}.tar.gz"
     state: absent
@@ -342,7 +362,7 @@
   - install
   - cilium
 
-- name: Clean up Cilium checksum
+- name: Cleaning up Cilium checksum
   file:
     path: "/tmp/cilium-{{current_os}}-{{current_arch}}.tar.gz.sha256sum"
     state: absent
@@ -351,20 +371,20 @@
   - install
   - cilium
 
-- name: Install Cilium
+- name: Installing Cilium
   command: cilium install
   when: cilium_version.rc != 0
   tags:
   - install
   - cilium
 
-- name: Install Cilium Hubble observability
+- name: Installing Cilium Hubble observability
   command: cilium hubble enable
   tags:
   - install
   - cilium
 
-- name: Check if Helm is installed
+- name: Checking if Helm is installed
   shell: helm version --short
   register: helm_version
   changed_when: false
@@ -373,14 +393,14 @@
   - install
   - helm
 
-- name: Display Helm version
+- name: Displaying Helm version
   debug:
     var: helm_version.stdout_lines
   tags:
   - install
   - helm
 
-- name: Download Helm
+- name: Downloading Helm
   get_url:
     url: "{{helm_url}}"
     dest: /tmp/helm.tar.gz
@@ -390,7 +410,7 @@
   - install
   - helm
 
-- name: Extract Helm
+- name: Extracting Helm
   unarchive:
     src: /tmp/helm.tar.gz
     dest: /tmp
@@ -400,14 +420,14 @@
   - install
   - helm
 
-- name: Move Helm binary to /usr/local/bin
+- name: Moving Helm binary to /usr/local/bin
   command: mv /tmp/linux-amd64/helm /usr/local/bin/helm
   when: helm_version.rc != 0
   tags:
   - install
   - helm
 
-- name: Clean up Helm files
+- name: Cleaning up Helm files
   file:
     path: /tmp/helm.tar.gz
     state: absent
@@ -415,7 +435,7 @@
   - install
   - helm
 
-- name: Check if /etc/bash_completion.d/ exists
+- name: Checking if /etc/bash_completion.d/ exists
   stat:
     path: /etc/bash_completion.d/
   register: bash_completion_dir
@@ -423,7 +443,7 @@
   - install
   - helm
 
-- name: Create /etc/bash_completion.d/ directory
+- name: Creating /etc/bash_completion.d/ directory
   file:
     path: /etc/bash_completion.d/
     state: directory
@@ -432,7 +452,7 @@
   - install
   - helm
 
-- name: Check if Helm Bash Completion file exists
+- name: Checking if Helm Bash Completion file exists
   stat:
     path: /etc/bash_completion.d/helm
   register: helm_completion_file
@@ -440,20 +460,20 @@
   - install
   - helm
 
-- name: Install Helm Bash Completion
+- name: Installing Helm Bash Completion
   shell: helm completion bash | sudo tee /etc/bash_completion.d/helm
   when: not helm_completion_file.stat.exists
   tags:
   - install
   - helm
 
-- name: Install Traefik
+- name: Installing Traefik
   shell: "helm repo add traefik https://traefik.github.io/charts && helm repo update"
   tags:
   - install
   - traefik
 
-- name: Install Traefik
+- name: Installing Traefik
   shell: "helm install --namespace kube-system traefik traefik/traefik"
   tags:
   - install
@@ -465,7 +485,7 @@
   tags:
   - install
 
-- name: Display node token
+- name: Displaying node token
   debug:
     var: k3s_node_token
   tags:

@@ -5,7 +5,7 @@ include /etc/nginx/modules-enabled/*.conf;
 
 events {
 	worker_connections 768;
-	# multi_accept on;
+	#multi_accept on;
 }
 
 http {
@@ -24,7 +24,18 @@ http {
 	add_header X-Content-Type-Options "nosniff";
 	add_header Referrer-Policy "no-referrer";
 	add_header Permissions-Policy "autoplay '*'; camera 'none'; payment 'self'; geolocation 'none'; microphone 'none'";
-	add_header Content-Security-Policy "upgrade-insecure-requests; default-src 'self'; img-src 'self' data: http: https: *.gravatar.com *.wp.com *.wordpress.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https: *.wp.com *.wordpress.com; style-src 'self' 'unsafe-inline' http: https: fonts.googleapis.com *.wp.com *.wordpress.com; font-src 'self' data: http: https: fonts.googleapis.com themes.googleusercontent.com *.wp.com *.wordpress.com; frame-src 'self' 'unsafe-inline' 'unsafe-eval' http: https: *.wp.com *.wordpress.com";
+	add_header Content-Security-Policy "upgrade-insecure-requests; 
+		default-src 'self' data: *.{{https_domain}}; 
+		img-src 'self' data: *.gravatar.com *.wp.com *.wordpress.com www.google-analytics.com wpforms.com *.{{https_domain}};
+		script-src 'self' 'unsafe-inline' 'unsafe-eval' data: stats.wp.com *.wp.com *.wordpress.com www.google.com www.gstatic.com www.googletagmanager.com www.google-analytics.com *.{{https_domain}};
+		style-src 'self' 'unsafe-inline' *.googleapis.com *.wp.com *.wordpress.com *.{{https_domain}};
+		font-src 'self' data: *.googleapis.com *.gstatic.com themes.googleusercontent.com *.wp.com *.wordpress.com *.{{https_domain}};
+		frame-src 'self' 'unsafe-inline' 'unsafe-eval' *.wp.com *.wordpress.com *.{{https_domain}};
+		frame-ancestors 'self' *.{{https_domain}};
+		manifest-src 'self' *.{{https_domain}};
+		media-src 'self' *.{{https_domain}};
+		object-src 'self' *.{{https_domain}};
+		worker-src 'self' blob: *.{{https_domain}};" always;
 	ssl_session_cache shared:SSL:10m;
 	ssl_session_timeout 10m;
 	server_tokens off;

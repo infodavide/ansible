@@ -1,114 +1,141 @@
----
-# tasks file
 #----------------------------------------------------------------------------------
-# repositories and packages for <==================================================
+# docker <=========================================================================
 #----------------------------------------------------------------------------------
-- name: Add buster security APT repository
-  apt_repository:
-    repo: deb http://security.debian.org/debian-security/ buster/updates main contrib
-    state: present
-  when: ansible_distribution == 'Debian'
+- name: Copying configuration
+  copy:
+    src: files/etc/
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
   tags:
-    - docker
+  - install
+  - update
 
-- name: Add buster security src APT repository
-  apt_repository:
-    repo: deb-src http://security.debian.org/debian-security/ buster/updates main contrib
-    state: present
-  when: ansible_distribution == 'Debian'
-  tags:
-    - docker
-
-- name: Add buster APT repository
-  apt_repository:
-    repo: deb http://deb.debian.org/debian/ buster main contrib
-    state: present
-  when: ansible_distribution == 'Debian'
-  tags:
-    - docker
-
-- name: Add buster updates APT repository
-  apt_repository:
-    repo: deb http://deb.debian.org/debian/ buster-updates main contrib
-    state: present
-  when: ansible_distribution == 'Debian'
-  tags:
-    - docker
-
-- name: Add buster src APT repository
-  apt_repository:
-    repo: deb-src http://deb.debian.org/debian/ buster-updates main contrib
-    state: present
-  when: ansible_distribution == 'Debian'
-  tags:
-    - docker
-
-- name: Updating packages
-  shell: apt-get update -y && apt-get upgrade -y
-  when: ansible_distribution == 'Debian'
+- name: Setting scripts permissions
+  shell: "chmod 777 /etc/admin/*.sh"
   ignore_errors: True
   args:
     warn: no
+  tags:
+  - install
+  - update
+
+- name: Installing packages
+  package: name={{item}} state=present
+  with_items:
+  - curl
+  - software-properties-common
+  - apt-transport-https
+  - apt-utils
+  - apt
+  - aptitude-common
+  - aptitude
   notify: cleaning_packages_metadata
   tags:
-    - docker
+  - install
+  - docker
 
-#----------------------------------------------------------------------------------
-# docker <==========================================================================
-#----------------------------------------------------------------------------------
 - name: Installing packages
   package: name={{item}} state=present
   when: ansible_distribution == 'Debian'
-  with_items: 
-    - curl
-    - software-properties-common
-    - apt-transport-https
-    - apt-utils
-    - apt
-    - aptitude-common
-    - aptitude
+  with_items:
+  - curl
+  - ca-certificates
+  - gnupg
+  - git
+  - ufw
   notify: cleaning_packages_metadata
   tags:
-    - docker
+  - install
+  - update
 
-- name: Check if docker is installed
-  package: name={{item}} state=present 
-  check_mode: true
-  ignore_errors: True
-  with_items: 
-    - docker-ce
-  register: docker_package_check
-
-- name: Setting docker repository
-  shell: curl -fsSL https://download.docker.com/linux/debian/gpg | sudo apt-key add -
+- name: Configuring keyrings
+  shell: "install -m 0755 -d /etc/apt/keyrings"
+  ignore_errors: False
   args:
     warn: no
-  notify: cleaning_packages_metadata
-  when: docker_package_check is failed
   tags:
-    - docker
+  - install
 
-- name: Setting docker repository
-  shell: add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable" && apt update && apt-cache policy docker-ce
+- name: Configuring docker repository
+  shell: "curl -fsSL {{docker_repository_gpg_url}} | gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
+  ignore_errors: False
   args:
     warn: no
-  notify: cleaning_packages_metadata
-  when: docker_package_check is failed
   tags:
-    - docker
+  - install
+  - docker
+
+- name: Configuring of docker repository
+  shell: "chmod a+r /etc/apt/keyrings/docker.gpg"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+  - docker
+
+- name: Configuring docker repository
+  shell: 'echo "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] {{docker_repository_url}} "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null'
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+  - docker
+
+- name: Updating repositories
+  shell: apt-get update -y
+  when: ansible_distribution == 'Debian'
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+  - docker
 
 - name: Installing docker packages
   package: name={{item}} state=present
+  when: ansible_distribution == 'Debian'
   with_items:
-    - docker-ce-cli
-    - docker-ce-rootless-extras
-    - docker-ce
-    - docker-compose-plugin
-    - docker-compose
-    - python3-docker
-    - python3-dockerpty
-    - python3-dockerpycreds
+  - docker-ce
+  - docker-ce-rootless-extras
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+  - python3-docker
+  - python3-dockerpty
+  - python3-dockerpycreds
   notify: cleaning_packages_metadata
-  when: docker_package_check is failed
   tags:
-    - docker
+  - install
+  - docker
+
+- name: Ensuring group docker exists
+  ansible.builtin.group:
+    name: docker
+    state: present
+  tags:
+  - install
+  - docker
+  - update
+
+- name: Starting docker service
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+  - docker
+  tags:
+  - install
+  - docker
+  - update
+
+- name: Testing docker
+  shell: "docker version"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+  - docker

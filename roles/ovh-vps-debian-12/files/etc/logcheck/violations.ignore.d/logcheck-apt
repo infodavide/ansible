@@ -1,0 +1,2 @@
+\w{3} [ :0-9]{11} [._[:alnum:]-]+ systemd\[[0-9]+\]: apt-daily.service: Consumed.*
+\w{3} [ :0-9]{11} [._[:alnum:]-]+ systemd\[[0-9]+\]: apt-daily-upgrade.service: Consumed.*

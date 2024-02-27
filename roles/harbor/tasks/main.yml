@@ -1,107 +1,24 @@
-- name: Updating packages
-  shell: apt-get update -y && apt-get upgrade -y
-  when: ansible_distribution == 'Debian'
+- name: Copying configuration
+  copy:
+    src: files/etc/
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+  tags:
+  - install
+  - update
+
+- name: Setting scripts permissions
+  shell: "chmod 777 /etc/admin/*.sh"
   ignore_errors: True
   args:
     warn: no
-  notify: cleaning_packages_metadata
   tags:
   - install
   - update
 
-- name: Installing packages
-  package: name={{item}} state=present
-  when: ansible_distribution == 'Debian'
-  with_items:
-  - curl
-  - ca-certificates curl
-  - gnupg
-  - git
-  - ufw
-  notify: cleaning_packages_metadata
-  tags:
-  - install
-  - update
-
-- name: Configuration of keyrings
-  shell: "install -m 0755 -d /etc/apt/keyrings"
-  ignore_errors: False
-  args:
-    warn: no
-  tags:
-  - install
-
-- name: Configuration of docker repository
-  shell: "curl -fsSL {{docker_repository_gpg_url}} | gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
-  ignore_errors: False
-  args:
-    warn: no
-  tags:
-  - install
-
-- name: Configuration of docker repository
-  shell: "chmod a+r /etc/apt/keyrings/docker.gpg"
-  ignore_errors: False
-  args:
-    warn: no
-  tags:
-  - install
-
-- name: Configuration of docker repository
-  shell: 'echo "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] {{docker_repository_url}} "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null'
-  ignore_errors: False
-  args:
-    warn: no
-  tags:
-  - install
-
-- name: Updating repositories
-  shell: apt-get update -y
-  when: ansible_distribution == 'Debian'
-  ignore_errors: False
-  args:
-    warn: no
-  tags:
-  - install
-
-- name: Installing docker packages
-  package: name={{item}} state=present
-  when: ansible_distribution == 'Debian'
-  with_items:
-  - docker-ce
-  - docker-ce-cli
-  - containerd.io
-  - docker-buildx-plugin
-  - docker-compose-plugin
-  notify: cleaning_packages_metadata
-  tags:
-  - install
-
-- name: Ensure group docker exists
-  ansible.builtin.group:
-    name: docker
-    state: present
-  tags:
-  - install
-  - update
-
-- name: Starting docker service
-  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
-  with_items:
-  - docker
-  tags:
-  - install
-  - update
-
-- name: Testing docker
-  shell: "docker version"
-  ignore_errors: False
-  args:
-    warn: no
-  tags:
-  - install
-
-- name: Download installer
+- name: Downloading installer
   shell: "curl -s {{harbor_releases_url}}|grep browser_download_url|cut -d '\"' -f 4 | grep '\\.tgz$' | wget -i -"
   ignore_errors: False
   args:
@@ -110,7 +27,7 @@
   tags:
   - install
 
-- name: Decompress installer
+- name: Decompressing installer
   shell: "tar xvzf harbor-offline-installer*.tgz"
   ignore_errors: False
   args:
@@ -119,7 +36,7 @@
   tags:
   - install
 
-- name: Configuration
+- name: Configuring
   shell: "cp /opt/harbor/harbor.yml.tmpl /opt/harbor/harbor.yml"
   ignore_errors: False
   args:
@@ -128,7 +45,7 @@
   tags:
   - install
 
-- name: Configuration
+- name: Configuring
   replace:
     path: /opt/harbor/harbor.yml
     regexp: "{{item.regexp}}"
@@ -140,19 +57,19 @@
   tags:
   - install
 
-- name: Allow all access to tcp port 80
+- name: Allowing all access to tcp port 80
   ufw:
     rule: allow
     port: '80'
     proto: tcp
 
-- name: Allow all access to tcp port 443
+- name: Allowing all access to tcp port 443
   ufw:
     rule: allow
     port: '443'
     proto: tcp
 
-- name: Allow all access to tcp port 4443 for Notary
+- name: Allowing all access to tcp port 4443 for Notary
   ufw:
     rule: allow
     port: '4443'
@@ -170,7 +87,7 @@
   tags:
   - install
 
-- name: Configuration of harbor_certs.cnf
+- name: Configuring harbor_certs.cnf
   replace:
     path: /opt/harbor/certs/harbor_certs.cnf
     regexp: "{{item.regexp}}"
@@ -206,7 +123,7 @@
   tags:
   - install
 
-- name: Configuration of SSL
+- name: Configuring SSL
   replace:
     path: /opt/harbor/harbor.yml
     regexp: "{{item.regexp}}"
@@ -227,7 +144,7 @@
   tags:
   - install
 
-- name: Request certificate
+- name: Requesting certificate
   shell: "certbot certonly --standalone -d {{harbor_hostname}} --preferred-challenges http --agree-tos  -m {{ssl_email}} --keep-until-expiring"
   ignore_errors: False
   args:
@@ -237,7 +154,7 @@
   tags:
   - install
 
-- name: Configuration of SSL
+- name: Configuring SSL
   replace:
     path: /opt/harbor/harbor.yml
     regexp: "{{item.regexp}}"
@@ -249,7 +166,7 @@
   tags:
   - install
 
-- name: Preparation
+- name: Preparing
   shell: "bash prepare"
   ignore_errors: False
   args:
@@ -258,21 +175,21 @@
   tags:
   - install
 
-- name: Set installation with Notary
+- name: Setting installation with Notary
   set-fact:
     install_arguments: "{{install_arguments}} --with-notary"
   when: notary in installation_features|lower
   tags:
   - install
 
-- name: Set installation with Chartmuseum
+- name: Setting installation with Chartmuseum
   set-fact:
     install_arguments: "{{install_arguments}} --with-chartmuseum"
   when: chartmuseum in installation_features|lower
   tags:
   - install
 
-- name: Installation
+- name: Installing
   shell: "bash install.sh {{install_arguments}}"
   ignore_errors: False
   args:

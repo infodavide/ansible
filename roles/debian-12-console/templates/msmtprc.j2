@@ -6,11 +6,15 @@ tls_trust_file /etc/ssl/certs/ca-certificates.crt
 aliases /etc/aliases
 
 account account1
-host mail_host
-from mail_from
+host {{mail_host}}
+port {{mail_port}}
+from {{mail_from}}
+{% if mail_user is not none %}
 auth on
-user mail_user
-password mail_password
+tls_starttls off
+user {{mail_user}}
+password {{mail_password}}
+{% endif %}
 
 # Set a default account
 account default : account1

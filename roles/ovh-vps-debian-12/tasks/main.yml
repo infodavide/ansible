@@ -1,408 +1,22 @@
-# tasks file
-#----------------------------------------------------------------------------------
-# repositories and packages for <==================================================
-#----------------------------------------------------------------------------------
-- name: Add buster security APT repository
-  apt_repository:
-    repo: deb http://security.debian.org/debian-security/ bookworm-security main contrib
-    state: present
-  when: ansible_distribution == 'Debian'
-  tags:
-  - packages
-
-- name: Add buster APT repository
-  apt_repository:
-    repo: deb http://deb.debian.org/debian/ bookworm main contrib
-    state: present
-  when: ansible_distribution == 'Debian'
-  tags:
-  - packages
-
-- name: Add buster updates APT repository
-  apt_repository:
-    repo: deb http://deb.debian.org/debian/ bookworm-updates main contrib
-    state: present
-  when: ansible_distribution == 'Debian'
-  tags:
-  - packages
-
-- name: Add buster src APT repository
-  apt_repository:
-    repo: deb-src http://deb.debian.org/debian/ bookworm-updates main contrib
-    state: present
-  when: ansible_distribution == 'Debian'
-  tags:
-  - packages
-
-- name: Updating packages
-  shell: apt-get update -y && apt-get upgrade -y
-  when: ansible_distribution == 'Debian'
-  ignore_errors: True
-  args:
-    warn: no
-  notify: cleaning_packages_metadata
-  tags:
-  - packages
-
-- name: Installing packages
-  package: name={{item}} state=present
-  when: ansible_distribution == 'Debian'
-  with_items: "{{debian_packages}}"
-  notify: cleaning_packages_metadata
-  tags:
-  - packages
-
-- name: Updating packages
-  shell: apt-get update -y && apt-get upgrade -y
-  when: ansible_distribution == 'Debian'
-  ignore_errors: True
-  args:
-    warn: no
-  notify: cleaning_packages_metadata
-  tags:
-  - packages
-
-#----------------------------------------------------------------------------------
-# system <=========================================================================
-#----------------------------------------------------------------------------------
-
-#----------------------------------------------------------------------------------
-# selinux <========================================================================
-#----------------------------------------------------------------------------------
-
-#----------------------------------------------------------------------------------
-# locale <=========================================================================
-#----------------------------------------------------------------------------------
-
-#----------------------------------------------------------------------------------
-# python <=========================================================================
-#----------------------------------------------------------------------------------
-- name: Getting Python site-packages location
-  shell: python3 -c 'import site; print(site.getsitepackages()[0])'
-  ignore_errors: True
-  register: python_path
-  tags:
-  - python
-
-#----------------------------------------------------------------------------------
-# locale <=========================================================================
-#----------------------------------------------------------------------------------
-- name: Setting default locale
-  lineinfile:
-    path: /etc/locale.conf
-    regexp: "^LANG="
-    line: "LANG=\"{{locale}}\""
-  when: ansible_distribution_file_variety == "SUSE"
-  tags:
-  - profile
-  - locale
-
-- name: Enabling locale
-  shell: sed -i 's/^# *\({{locale}}.{{encoding}}\)/\1/' /etc/locale.gen
-  when: ansible_distribution == 'Debian'
-  args:
-    warn: no
-  tags:
-  - locale
-
-- name: Enabling locale
-  shell: sed -i 's/^# *\en_US.UTF-8\)/\1/' /etc/locale.gen
-  when: ansible_distribution == 'Debian'
-  args:
-    warn: no
-  tags:
-  - locale
-
-- name: Generating locales
-  when: ansible_distribution == 'Debian'
-  shell: locale-gen
-  args:
-    warn: no
-  tags:
-  - locale
-
-- name: Setting default locale
-  shell: localectl set-locale LANG={{locale}}
-  ignore_errors: True
-  args:
-    warn: no
-  tags:
-  - profile
-  - locale
-
-- name: Setting default keymap
-  shell: localectl set-keymap fr
-  ignore_errors: True
-  args:
-    warn: no
-  tags:
-  - profile
-  - locale
-
-#----------------------------------------------------------------------------------
-# profile <=========================================================================
-#----------------------------------------------------------------------------------
-- name: Copying profile.local file
+- name: Copying configuration
   copy:
-    src: files/etc/profile.local
+    src: files/etc/
     dest: /etc/
     owner: root
     group: root
     mode: 0664
   tags:
-  - profile
+  - install
+  - update
 
-- name: Setting default history size
-  lineinfile:
-    path: /etc/profile
-    regexp: "^HISTSIZE=.*"
-    line: "HISTSIZE=50"
-  tags:
-  - profile
-
-- name: Adding language settings to profile
-  lineinfile:
-    path: /etc/profile
-    regexp: "{{item.regexp}}"
-    line: "{{item.line}}"
-    create: yes
-  with_items:
-  - {regexp: '^export\s*LANG=', line: 'export LANG={{locale}}'}
-  - {regexp: '^export\s*LANGUAGE=', line: 'export LANGUAGE={{locale}}'}
-  - {regexp: '^export\s*LC_ALL=', line: 'export LC_ALL={{locale}}'}
-  tags:
-  - profile
-
-- name: Reconfigure time zone
-  shell: timedatectl set-timezone Etc/UTC
-  when: ansible_distribution == 'Debian'
-  tags:
-  - profile
-
-- name: Update time zone to Etc/UTC
-  copy: content="Etc/UTC\n" dest=/etc/timezone owner=root group=root mode=0644
-  register: timezone
-  tags:
-  - profile
-
-- name: Reconfigure time zone (if changed)
-  shell: dpkg-reconfigure -f noninteractive tzdata
-  when: ansible_distribution == 'Debian' and timezone.changed
-  tags:
-  - profile
-
-#----------------------------------------------------------------------------------
-# security <=======================================================================
-#----------------------------------------------------------------------------------
-- name: Copying sudoers for trusted users
-  copy:
-    src: files/etc/sudoers.d
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0660
-  tags:
-  - security
-
-#----------------------------------------------------------------------------------
-# proxy <==========================================================================
-#----------------------------------------------------------------------------------
-- name: Echo Proxy configuration
-  debug: var=proxy
-  tags:
-  - proxy
-
-- name: Setting Proxy configuration
-  lineinfile:
-    path: /etc/profile
-    backup: no
-    regexp: "{{item.regexp}}"
-    line: "{{item.line}}"
-  with_items:
-  - {regexp: '^.*http_proxy=.*$', line: 'export http_proxy={{proxy}}'}
-  - {regexp: '^.*https_proxy=.*$', line: 'export https_proxy={{proxy}}'}
-  - {regexp: '^.*ftp_proxy=.*$', line: 'export ftp_proxy={{proxy}}'}
-  - {regexp: '^.*rsync_proxy=.*$', line: 'export rsync_proxy={{proxy}}'}
-  - {regexp: '^.*no_proxy=.*$', line: 'export no_proxy="localhost,127.0.0.1,localaddress,.localdomain,.intranet"'}
-  when: proxy|default(None) != None
-  tags:
-  - proxy
-
-- name: Deteting Proxy configuration
-  lineinfile:
-    path: /etc/profile
-    backup: no
-    regexp: "{{item.regexp}}"
-    state: absent
-  with_items:
-  - {regexp: '^.*http_proxy=.*$'}
-  - {regexp: '^.*https_proxy=.*$'}
-  - {regexp: '^.*ftp_proxy=.*$'}
-  - {regexp: '^.*rsync_proxy=.*$'}
-  - {regexp: '^.*no_proxy=.*$'}
-  when: proxy|default(None) == None
-  tags:
-  - proxy
-
-- name: Setting current proxy
-  shell: "{{item}}"
-  ignore_errors: True
-  args:
-    warn: no
-  with_items:
-  - "export http_proxy={{ lookup('env', 'http_proxy') }}"
-  - "export https_proxy={{ lookup('env', 'https_proxy') }}"
-  - "export ftp_proxy={{ lookup('env', 'ftp_proxy') }}"
-  when: proxy|default(None) != None
-  tags:
-  - proxy
-
-#----------------------------------------------------------------------------------
-# admin directory and custom scripts <=============================================
-#----------------------------------------------------------------------------------
-- name: Removing existing admin directory
-  file:
-    path: /etc/admin
-    state: absent
-  tags:
-  - configuration
-
-- name: Removing existing deprecated directory
-  file:
-    path: /etc/infodavid
-    state: absent
-  tags:
-  - configuration
-
-- name: Copying admin directory
-  copy:
-    src: files/etc/admin
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0660
-  tags:
-  - configuration
-
-- name: Updating permissions on admin directory
-  shell: "chmod 770 /etc/admin/*.sh|:"
+- name: Setting scripts permissions
+  shell: "chmod 777 /etc/admin/*.sh"
   ignore_errors: True
   args:
     warn: no
   tags:
-  - configuration
-
-- name: Creating cron tasks
-  copy:
-    src: files/etc/cron.d
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0664
-  tags:
-  - configuration
-
-- name: Creating monthly cron tasks
-  copy:
-    src: files/etc/cron.monthly
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0664
-  tags:
-  - configuration
-
-- name: Creating weekly cron tasks
-  copy:
-    src: files/etc/cron.weekly
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0664
-  tags:
-  - configuration
-
-- name: Creating daily cron tasks
-  copy:
-    src: files/etc/cron.daily
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0664
-  tags:
-  - configuration
-
-- name: Creating hourly cron tasks
-  copy:
-    src: files/etc/cron.hourly
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0664
-  tags:
-  - configuration
-
-- name: Creating boot tasks
-  copy:
-    src: files/etc/rc.d
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0664
-  tags:
-  - configuration
-
-#----------------------------------------------------------------------------------
-# mail <===========================================================================
-#----------------------------------------------------------------------------------
-- name: Setting aliases
-  lineinfile:
-    path: /etc/aliases
-    backup: no
-    regexp: "{{item.regexp}}"
-    line: "{{item.line}}"
-  with_items:
-  - {regexp: '^root:.*$', line: 'root: {{email}}'}
-  - {regexp: '^default:.*$', line: 'default: {{email}}'}
-  when: email != ""
-  tags:
-  - mail
-
-- name: Installing msmtp package
-  package: name={{item}} state=present
-  with_items:
-  - msmtp
-  - msmtp-mta
-  notify: cleaning_packages_metadata
-  when: mail == "msmtp"
-  tags:
-  - mail
-
-- name: Copying msmtprc configuration
-  copy:
-    src: files/etc/msmtprc
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0660
-  when: mail == "msmtp"
-  tags:
-  - mail
-
-- name: Setting msmtprc configuration
-  lineinfile:
-    path: /etc/msmtprc
-    backup: no
-    regexp: "{{item.regexp}}"
-    line: "{{item.line}}"
-  with_items:
-  - {regexp: '^from mail_from.*$', line: 'from {{mail_from}}'}
-  - {regexp: '^host mail_host.*$', line: 'host {{mail_host}}'}
-  - {regexp: '^user mail_user.*$', line: 'user {{mail_user}}'}
-  - {regexp: '^password mail_password.*$', line: 'password {{mail_password}}'}
-  when: mail == "msmtp"
-  tags:
-  - mail
+  - install
+  - update
 
 #----------------------------------------------------------------------------------
 # nginx <==========================================================================
@@ -410,24 +24,40 @@
 - name: Installing nginx package
   package: name={{item}} state=present
   with_items:
-  - nginx-common
-  - nginx-full
+  - nginx
   - nginx-extras
-  - nginx
   notify: cleaning_packages_metadata
-  when: http == "nginx" and ansible_distribution == 'Debian'
-  tags:
-  - nginx
-
-- name: Copying nginx configuration
-  copy:
-    src: files/etc/nginx
-    dest: /etc
-    owner: root
-    group: root
-    mode: 0664
   when: http == "nginx"
   tags:
+  - install
+  - nginx
+
+- name: Setting nginx configuration
+  template:
+    src: nginx.conf.j2
+    dest: "/etc/nginx/nginx.conf"
+  when: http == "nginx"
+  tags:
+  - install
+  - nginx
+
+- name: Setting nginx site configuration
+  template:
+    src: nginx_website.j2
+    dest: "/etc/nginx/sites-available/{{https_domain}}"
+  when: http == "nginx"
+  tags:
+  - install
+  - nginx
+
+- name: Creating symbolic link for nginx site configuration
+  file:
+    src: "/etc/nginx/sites-available/{{https_domain}}"
+    dest: "/etc/nginx/sites-enabled/default"
+    state: link
+  when: http == "nginx"
+  tags:
+  - install
   - nginx
 
 #----------------------------------------------------------------------------------
@@ -449,6 +79,7 @@
   notify: cleaning_packages_metadata
   when: http == "nginx"
   tags:
+  - install
   - nginx
 
 - name: Setting cerbot certificate for domain
@@ -458,84 +89,19 @@
     warn: no
   when: http == "nginx"
   tags:
+  - install
   - nginx
-
-#----------------------------------------------------------------------------------
-# users <=========================================================================
-#----------------------------------------------------------------------------------
-- name: Creating users
-  user:
-    name: "{{item.name}}"
-    groups: "{{item.group}}"
-    password: "{{item.password}}"
-    home: "{{item.home}}"
-    state: present
-    createhome: yes
-    append: yes
-  with_items: "{{users}}"
-  tags:
-  - users
-
-- name: Updating permissions on homes
-  file:
-    path: "{{item.home}}"
-    mode: u+rwX,g-rwx,o-rwx
-    recurse: yes
-  with_items: "{{users}}"
-  tags:
-  - users
-
-#----------------------------------------------------------------------------------
-# SSH <============================================================================
-#----------------------------------------------------------------------------------
-- name: Setting sshd configuration
-  lineinfile:
-    path: /etc/ssh/sshd_config
-    backup: no
-    regexp: "{{item.regexp}}"
-    line: "{{item.line}}"
-  with_items:
-  - {regexp: '^AllowTcpForwarding.*$', line: 'AllowTcpForwarding yes'}
-  - {regexp: '^PermitTunnel.*$', line: 'PermitTunnel yes'}
-  - {regexp: '^PermitRootLogin.*$', line: 'PermitRootLogin no'}
-  - {regexp: '^#Port.*$', line: 'Port {{ssh_port}}'}
-  - {regexp: '^Port.*$', line: 'Port {{ssh_port}}'}
-  tags:
-  - ssh
-
-- name: Enabling and restart services
-  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
-  with_items:
-  - sshd
-  tags:
-  - ssh
 
 #----------------------------------------------------------------------------------
 # firewall <=======================================================================
 #----------------------------------------------------------------------------------
-- name: Copying admin directory
-  copy:
-    src: files/etc/admin
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0660
-  tags:
-  - firewall
-
-- name: Updating permissions on admin directory
-  shell: chmod 770 /etc/admin/*.sh
-  args:
-    warn: no
-  tags:
-  - firewall
-
 - name: Creating symbolic link for firehol task
   file:
     src: "/etc/admin/firehol.sh"
     dest: "/etc/cron.daily/firehol.sh"
     state: link
   tags:
+  - install
   - firewall
 
 - name: Creating symbolic link for ipblock task
@@ -544,6 +110,7 @@
     dest: "/etc/cron.daily/ipblock.sh"
     state: link
   tags:
+  - install
   - firewall
 
 - name: Installing firewalld package
@@ -553,11 +120,13 @@
   notify: cleaning_packages_metadata
   when: firewall == "firewalld"
   tags:
+  - install
   - firewall
 
 - name: Enabling firewall service
   systemd: enabled=yes state=started daemon_reload=yes name=firewalld
   tags:
+  - install
   - firewall
   when: firewall == "firewalld"
 
@@ -568,12 +137,14 @@
   with_items: "{{firewall_items}}"
   when: firewall == "firewalld"
   tags:
+  - install
   - firewall
 
 - name: Allow multicast traffic (firewalld)
   shell: firewall-cmd --permanent --add-service=samba && firewall-cmd --permanent --add-protocol=igmp && firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 10 -d 239.255.255.250 -j ACCEPT && firewall-cmd --reload
   when: firewall == "firewalld"
   tags:
+  - install
   - firewall
 
 - name: Installing iptables package
@@ -583,11 +154,13 @@
   notify: cleaning_packages_metadata
   when: firewall == "iptables"
   tags:
+  - install
   - firewall
 
 - name: Enabling firewall service
   systemd: enabled=yes state=started daemon_reload=yes name=iptables
   tags:
+  - install
   - firewall
   when: firewall == "iptables"
 
@@ -596,6 +169,7 @@
   with_items: "{{firewall_items}}"
   when: firewall == "iptables"
   tags:
+  - install
   - firewall
 
 - name: Installing ufw package
@@ -606,11 +180,13 @@
   notify: cleaning_packages_metadata
   when: firewall == "ufw"
   tags:
+  - install
   - firewall
 
 - name: Enabling firewall service
   systemd: enabled=yes state=started daemon_reload=yes name=ufw
   tags:
+  - install
   - firewall
   when: firewall == "ufw"
 
@@ -621,37 +197,48 @@
   with_items: "{{firewall_items}}"
   when: firewall == "ufw"
   tags:
+  - install
   - firewall
 
 - name: Enabling firewall service
   systemd: enabled=yes state=restarted daemon_reload=yes name=firewalld
   tags:
+  - install
   - firewall
   when: firewall == "firewalld"
 
 - name: Enabling firewall service
   systemd: enabled=yes state=restarted daemon_reload=yes name=ufw
   tags:
+  - install
   - firewall
   when: firewall == "ufw"
 
 - name: Enabling firewall service
   shell: "echo 'y' | sudo ufw enable"
   tags:
+  - install
   - firewall
   when: firewall == "ufw"
 
 - name: Display firewall rules
   command: ufw status numbered
   register: ufw_status_output
+  tags:
+  - install
+  - firewall
 
 - name: Display firewall rules
   debug:
     msg: "{{ufw_status_output.stdout}}"
+  tags:
+  - install
+  - firewall
 
 - name: Enabling firewall service
   systemd: enabled=yes state=restarted daemon_reload=yes name=iptables
   tags:
+  - install
   - firewall
   when: firewall == "iptables"
 
@@ -667,17 +254,7 @@
   #    - aide
   notify: cleaning_packages_metadata
   tags:
-  - security
-  - firewall
-
-- name: Installing security packages
-  package: name={{item}} state=present
-  with_items:
-  - ca-certificates-cacert
-  - logdigest
-  notify: cleaning_packages_metadata
-  when: ansible_distribution_file_variety == "SUSE"
-  tags:
+  - install
   - security
   - firewall
 
@@ -687,8 +264,8 @@
   - ca-certificates
   - logcheck
   notify: cleaning_packages_metadata
-  when: ansible_distribution == 'Debian'
   tags:
+  - install
   - security
   - firewall
 
@@ -700,6 +277,7 @@
     group: root
     mode: 0664
   tags:
+  - install
   - security
   - firewall
 
@@ -713,6 +291,7 @@
   - {regexp: '^THRESHOLD.*$', line: 'THRESHOLD=10'}
   - {regexp: '^BLOCK_TIME.*$', line: 'BLOCK_TIME=900'}
   tags:
+  - install
   - security
   - firewall
 
@@ -721,6 +300,7 @@
     path: /usr/lib/sshg-fw-{{firewall}}
   register: sshg_lib_result
   tags:
+  - install
   - security
   - firewall
 
@@ -729,6 +309,7 @@
     path: /usr/libexec/sshg-fw-{{firewall}}
   register: sshg_libexec_result
   tags:
+  - install
   - security
   - firewall
 
@@ -742,6 +323,7 @@
   - {regexp: '^BACKEND.*$', line: 'BACKEND="/usr/lib/sshg-fw-{{firewall}}"'}
   when: sshg_lib_result.stat.exists
   tags:
+  - install
   - security
   - firewall
 
@@ -755,6 +337,7 @@
   - {regexp: '^BACKEND.*$', line: 'BACKEND="/usr/libexec/sshg-fw-{{firewall}}"'}
   when: sshg_libexec_result.stat.exists
   tags:
+  - install
   - security
   - firewall
 
@@ -767,18 +350,7 @@
   with_items:
   - {regexp: '^dbpurgeage.*$', line: 'dbpurgeage = 7d'}
   tags:
-  - security
-  - firewall
-
-- name: Copying logdigest configuration
-  copy:
-    src: files/etc/logdigest
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0664
-  when: ansible_distribution_file_variety == "SUSE"
-  tags:
+  - install
   - security
   - firewall
 
@@ -789,8 +361,8 @@
     owner: root
     group: root
     mode: 0664
-  when: ansible_distribution == 'Debian'
   tags:
+  - install
   - security
   - firewall
 
@@ -803,6 +375,7 @@
   with_items:
   - {regexp: '^SYSADMIN=.*$', line: 'SYSADMIN={{email}}'}
   tags:
+  - install
   - security
   - firewall
 
@@ -817,6 +390,7 @@
   - {regexp: '[#]?UPDATE_MIRRORS=.*$', line: 'UPDATE_MIRRORS=1'}
   - {regexp: '[#]?WEB_CMD=.*$', line: 'WEB_CMD=""'}
   tags:
+  - install
   - security
   - firewall
 
@@ -824,6 +398,7 @@
   shell: rkhunter -q --update
   ignore_errors: True
   tags:
+  - install
   - security
   - firewall
 
@@ -835,19 +410,22 @@
     group: root
     mode: 0664
   tags:
+  - install
   - security
   - firewall
 
 #----------------------------------------------------------------------------------
-# end <============================================================================
+# finalize <=======================================================================
 #----------------------------------------------------------------------------------
 - name: Enabling and restart services
   systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
   with_items:
   - sshd
   - cron
+  - sshguard
+  - ufw
   tags:
-  - always
+  - install
 
 - name: Sending a test email
   shell: "mail -s 'Test email from host: {{ansible_hostname}}' {{email}} < /dev/null"
@@ -855,4 +433,4 @@
   args:
     warn: no
   tags:
-  - always
+  - install

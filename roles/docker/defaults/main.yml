@@ -1,2 +1,3 @@
----
 # defaults file
+docker_repository_gpg_url: https://download.docker.com/linux/debian/gpg
+docker_repository_url: https://download.docker.com/linux/debian

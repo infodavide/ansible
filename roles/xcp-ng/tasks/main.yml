@@ -16,7 +16,7 @@
   tags:
   - install
 
-- name: Create symbolic link for xe-custom-startup.sh
+- name: Creating symbolic link for xe-custom-startup.sh
   file:
     src: "/etc/admin/xe-custom-startup.sh"
     dest: "/etc/rc.d/init.d/xe-custom-startup.sh"
@@ -24,7 +24,7 @@
   tags:
   - install
 
-- name: Create symbolic link for xe-custom-shutdown.sh
+- name: Creating symbolic link for xe-custom-shutdown.sh
   file:
     src: "/etc/admin/xe-custom-shutdown.sh"
     dest: "/etc/rc.d/init.d/xe-custom-shutdown.sh"
@@ -32,7 +32,7 @@
   tags:
   - install
 
-- name: Create rc.d symbolic link for xe-custom-startup.sh
+- name: Creating rc.d symbolic link for xe-custom-startup.sh
   file:
     src: "/etc/rc.d/init.d/xe-custom-startup.sh"
     dest: "{{item}}"
@@ -46,7 +46,7 @@
   tags:
   - install
 
-- name: Create rc.d symbolic link for xe-custom-shutdown.sh
+- name: Creating rc.d symbolic link for xe-custom-shutdown.sh
   file:
     src: "/etc/rc.d/init.d/xe-custom-shutdown.sh"
     dest: "{{item}}"
@@ -62,7 +62,7 @@
   tags:
   - install
 
-- name: Create /volume1 directory
+- name: Creating /volume1 directory
   ansible.builtin.file:
     path: /volume1
     state: directory
@@ -72,7 +72,7 @@
   tags:
   - install
 
-- name: Create /volume2 directory
+- name: Creating /volume2 directory
   ansible.builtin.file:
     path: /volume2
     state: directory
@@ -82,7 +82,7 @@
   tags:
   - install
 
-- name: Ensure fstab uses /volume1
+- name: Ensuring fstab uses /volume1
   mount:
     name: "/volume1"
     src: "/dev/sdb1"
@@ -92,7 +92,7 @@
   tags:
   - install
 
-- name: Ensure fstab uses /volume2
+- name: Ensuring fstab uses /volume2
   mount:
     name: "/volume2"
     src: "/dev/sde1"

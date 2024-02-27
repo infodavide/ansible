@@ -1,3 +1,74 @@
+#----------------------------------------------------------------------------------
+# repositories and packages for <==================================================
+#----------------------------------------------------------------------------------
+- name: Adding security repository
+  apt_repository:
+    repo: deb http://security.debian.org/debian-security/ bookworm-security main contrib non-free-firmware
+    state: present
+  tags:
+  - install
+  - packages
+
+- name: Adding repository
+  apt_repository:
+    repo: deb http://deb.debian.org/debian/ bookworm main contrib non-free-firmware
+    state: present
+  tags:
+  - install
+  - packages
+
+- name: Adding updates repository
+  apt_repository:
+    repo: deb http://deb.debian.org/debian/ bookworm-updates main contrib non-free-firmware
+    state: present
+  tags:
+  - install
+  - packages
+
+- name: Updating packages
+  shell: apt-get update -y && apt-get upgrade -y
+  ignore_errors: True
+  args:
+    warn: no
+  notify: cleaning_packages_metadata
+  tags:
+  - install
+
+- name: Installing packages
+  package: name={{item}} state=present
+  with_items:
+  - bash-completion
+  - bash
+  - console-data
+  - coreutils
+  - curl
+  - debianutils
+  - file
+  - less
+  - mc
+  - sed
+  - sudo
+  - wget
+  notify: cleaning_packages_metadata
+  tags:
+  - install
+
+- name: Removing existing admin directory
+  file:
+    path: /etc/admin
+    state: absent
+  tags:
+  - install
+  - configuration
+
+- name: Removing existing deprecated directory
+  file:
+    path: /etc/infodavid
+    state: absent
+  tags:
+  - install
+  - configuration
+
 - name: Copying configuration
   copy:
     src: files/etc/
@@ -18,6 +89,28 @@
   - install
   - update
 
+- name: Setting sudoers for trusted users
+  template:
+    src: sudoer.j2
+    dest: "/etc/sudoers.d/{{item.name}}"
+  with_items: "{{users}}"
+  tags:
+  - install
+  - security
+
+- name: Setting sudoers permissions
+  shell: "chmod 660 /etc/sudoers.d/{{item.name}}"
+  ignore_errors: True
+  args:
+    warn: no
+  with_items: "{{users}}"
+  tags:
+  - install
+  - update
+
+#----------------------------------------------------------------------------------
+# hostname <=======================================================================
+#----------------------------------------------------------------------------------
 - name: Retrieving hostname
   shell: "hostnamectl hostname"
   register: current_hostname
@@ -28,25 +121,221 @@
   tags:
   - install
 
-- name: Display current hostname
+- name: Displaying current hostname
   debug:
     var: current_hostname
   tags:
   - install
 
-- name: Display new hostname
+- name: Displaying new hostname
   debug:
     var: new_hostname
   tags:
   - install
 
-- name: Set a hostname
+- name: Setting a hostname
   hostname:
     name: "{{new_hostname}}"
   when: new_hostname != None and new_hostname != "" and current_hostname.stdout != new_hostname
   tags:
   - install
 
+- name: Setting a hostname in hosts file
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.0\.1.*'
+    line: "127.0.0.1  localhost {{new_hostname}}"
+  when: new_hostname != None and new_hostname != "" and current_hostname.stdout != new_hostname
+  tags:
+  - install
+
+#----------------------------------------------------------------------------------
+# locale <=========================================================================
+#----------------------------------------------------------------------------------
+- name: Enabling locale
+  shell: sed -i 's/^# *\({{locale}}.{{encoding}}\)/\1/' /etc/locale.gen
+  args:
+    warn: no
+  tags:
+  - locale
+
+- name: Setting environment configuration
+  lineinfile:
+    path: /etc/environment
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+  - {regexp: '^LANG=.*$', line: "LANG={{locale}}.{{encoding}}"}
+  - {regexp: '^LC_ALL=.*$', line: "LC_ALL={{locale}}.{{encoding}}",}
+
+- name: Enabling locale
+  shell: sed -i 's/^# *\({{locale}}.{{encoding}}\)/\1/' /etc/default/locale
+  args:
+    warn: no
+  tags:
+  - locale
+
+- name: Generating locales
+  shell: locale-gen
+  args:
+    warn: no
+  tags:
+  - install
+  - locale
+
+- name: Setting default locale
+  shell: localectl set-locale LANG={{locale}}.{{encoding}}
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - profile
+  - locale
+
+#----------------------------------------------------------------------------------
+# keymap <=========================================================================
+#----------------------------------------------------------------------------------
+- name: Downloading keymaps
+  get_url:
+    url: "{{keymaps_url}}"
+    dest: "/tmp/kbd.tar.gz"
+    mode: '0770'
+  tags:
+  - install
+  - update
+  - locale
+
+- name: Extracting keymaps
+  shell: "tar xzf /tmp/kbd.tar.gz && cp -Rp /tmp/kbd/data/keymaps/* /usr/share/keymaps/ && rm -R /tmp/kbd"
+  ignore_errors: True
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - install
+  - update
+  - locale
+
+- name: Setting default keymap
+  shell: localectl set-keymap fr
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - locale
+
+#----------------------------------------------------------------------------------
+# profile <========================================================================
+#----------------------------------------------------------------------------------
+- name: Setting default history size
+  lineinfile:
+    path: /etc/profile
+    regexp: "^HISTSIZE=.*"
+    line: "HISTSIZE=50"
+  tags:
+  - install
+  - profile
+
+- name: Adding language settings to profile
+  lineinfile:
+    path: /etc/profile
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+    create: yes
+  with_items:
+  - {regexp: '^export\s*LANG=', line: 'export LANG={{locale}}'}
+  - {regexp: '^export\s*LANGUAGE=', line: 'export LANGUAGE={{locale}}'}
+  - {regexp: '^export\s*LC_ALL=', line: 'export LC_ALL={{locale}}'}
+  tags:
+  - install
+  - profile
+
+#----------------------------------------------------------------------------------
+# time zone <======================================================================
+#----------------------------------------------------------------------------------
+- name: Reconfigure time zone
+  shell: timedatectl set-timezone Etc/UTC
+  tags:
+  - install
+  - profile
+
+- name: Update time zone to Etc/UTC
+  copy: content="Etc/UTC\n" dest=/etc/timezone owner=root group=root mode=0644
+  register: timezone
+  tags:
+  - install
+  - profile
+
+- name: Reconfigure time zone (if changed)
+  shell: dpkg-reconfigure -f noninteractive tzdata
+  when: timezone.changed
+  tags:
+  - install
+  - profile
+
+#----------------------------------------------------------------------------------
+# proxy <==========================================================================
+#----------------------------------------------------------------------------------
+- name: Echo proxy configuration
+  debug: var=proxy
+  tags:
+  - install
+  - proxy
+
+- name: Setting Proxy configuration
+  lineinfile:
+    path: /etc/profile
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+  - {regexp: '^.*http_proxy=.*$', line: 'export http_proxy={{proxy}}'}
+  - {regexp: '^.*https_proxy=.*$', line: 'export https_proxy={{proxy}}'}
+  - {regexp: '^.*ftp_proxy=.*$', line: 'export ftp_proxy={{proxy}}'}
+  - {regexp: '^.*rsync_proxy=.*$', line: 'export rsync_proxy={{proxy}}'}
+  - {regexp: '^.*no_proxy=.*$', line: 'export no_proxy="localhost,127.0.0.1,localaddress,.localdomain,.intranet"'}
+  when: proxy|default(None) != None
+  tags:
+  - install
+  - proxy
+
+- name: Deteting Proxy configuration
+  lineinfile:
+    path: /etc/profile
+    backup: no
+    regexp: "{{item.regexp}}"
+    state: absent
+  with_items:
+  - {regexp: '^.*http_proxy=.*$'}
+  - {regexp: '^.*https_proxy=.*$'}
+  - {regexp: '^.*ftp_proxy=.*$'}
+  - {regexp: '^.*rsync_proxy=.*$'}
+  - {regexp: '^.*no_proxy=.*$'}
+  when: proxy|default(None) == None
+  tags:
+  - install
+  - proxy
+
+- name: Setting current proxy
+  shell: "{{item}}"
+  ignore_errors: True
+  args:
+    warn: no
+  with_items:
+  - "export http_proxy={{ lookup('env', 'http_proxy') }}"
+  - "export https_proxy={{ lookup('env', 'https_proxy') }}"
+  - "export ftp_proxy={{ lookup('env', 'ftp_proxy') }}"
+  when: proxy|default(None) != None
+  tags:
+  - install
+  - proxy
+
+#----------------------------------------------------------------------------------
+# reboot <=========================================================================
+#----------------------------------------------------------------------------------
 - name: Reboot the server
   shell: "sleep 4 && reboot"
   async: 1
@@ -65,9 +354,11 @@
   tags:
   - install
 
+#----------------------------------------------------------------------------------
+# packages <=======================================================================
+#----------------------------------------------------------------------------------
 - name: Updating packages
   shell: apt-get update -y && apt-get upgrade -y
-  when: ansible_distribution == 'Debian'
   ignore_errors: True
   args:
     warn: no
@@ -77,7 +368,7 @@
 
 - name: Removing packages
   package: name={{item}} state=absent
-  when: ansible_distribution == 'Debian'
+  ignore_errors: True
   with_items:
   - alsa-topology-conf
   - alsa-ucm-conf
@@ -93,7 +384,8 @@
 
 - name: Removing packages
   package: name={{item}} state=absent
-  when: ansible_distribution == 'Debian' and not secured
+  ignore_errors: True
+  when: not secured
   with_items:
   - apparmor-utils
   - fail2ban
@@ -104,27 +396,20 @@
 
 - name: Auto removing packages
   shell: apt auto-remove -y
-  when: ansible_distribution == 'Debian'
   tags:
   - install
 
 - name: Installing packages
   package: name={{item}} state=present
-  when: ansible_distribution == 'Debian'
   with_items:
-  - bash-completion
-  - bash
   - bzip2
   - ca-certificates
   - cloud-init
-  - coreutils
   - cpio
   - cron
-  - curl
   - debianutils
   - e2fsprogs
   - fdisk
-  - file
   - findutils
   - gpg-agent
   - gpg-wks-client
@@ -139,12 +424,10 @@
   - iperf3
   - iproute2
   - iputils-ping
-  - less
   - logrotate
   - logtail
   - mailutils-common
   - mailutils
-  - mc
   - ncurses-base
   - ncurses-bin
   - net-tools
@@ -157,10 +440,8 @@
   - psmisc
   - rsync
   - screen
-  - sed
   - software-properties-common
   - sshpass
-  - sudo
   - tar
   - tree
   - util-linux-extra
@@ -169,7 +450,6 @@
   - vim-common
   - vim-runtime
   - vim-tiny
-  - wget
   - whois
   notify: cleaning_packages_metadata
   tags:
@@ -177,7 +457,7 @@
 
 - name: Installing packages
   package: name={{item}} state=present
-  when: ansible_distribution == 'Debian' and secured
+  when: secured
   with_items:
   - apparmor-utils
   - fail2ban
@@ -187,6 +467,157 @@
   tags:
   - install
 
+#----------------------------------------------------------------------------------
+# logrotate <======================================================================
+#----------------------------------------------------------------------------------
+- name: Setting logrotate
+  replace:
+    path: /etc/logrotate.conf
+    regexp: "{{item.regexp}}"
+    replace: "{{item.replace}}"
+    backup: no
+  with_items:
+  - {regexp: '^(\s*)rotate\s*.*$', replace: '\1rotate {{logrotate_rotate}}'}
+  - {regexp: '^(\s*)maxage\s*.*$', replace: '\1maxage {{logrotate_maxage}}'}
+  - {regexp: '^(\s*)size\s*.*$', replace: '\1size {{logrotate_size}}'}
+  tags:
+  - logrotate
+
+- name: Setting logrotate
+  lineinfile:
+    path: /etc/logrotate.conf
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+  - {regexp: '^rotate\s*.*$', line: 'rotate {{logrotate_rotate}}'}
+  - {regexp: '^maxage\s*.*$', line: 'maxage {{logrotate_maxage}}'}
+  - {regexp: '^size\s*.*$', line: 'size {{logrotate_size}}'}
+  - {regexp: '^compress$', line: 'compress'}
+  tags:
+  - logrotate
+
+- name: Find files inside logrotate.d directory
+  find:
+    paths: "/etc/logrotate.d/"
+    patterns: "*"
+  register: logrotate_files
+
+- name: Replace rotate values
+  replace:
+    path: "{{item.path}}"
+    regexp: '^(\s*)rotate\s*.*$'
+    replace: '\1rotate {{logrotate_rotate}}'
+  with_items: "{{logrotate_files.files}}"
+
+- name: Replace maxage values
+  replace:
+    path: "{{item.path}}"
+    regexp: '^(\s*)maxage\s*.*$'
+    replace: '\1maxage {{logrotate_maxage}}'
+  with_items: "{{logrotate_files.files}}"
+
+- name: Replace size values
+  replace:
+    path: "{{item.path}}"
+    regexp: '^size\s*.*$'
+    replace: 'size {{logrotate_size}}'
+  with_items: "{{logrotate_files.files}}"
+
+#----------------------------------------------------------------------------------
+# mail <===========================================================================
+#----------------------------------------------------------------------------------
+- name: Setting aliases
+  lineinfile:
+    path: /etc/aliases
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+  - {regexp: '^root:.*$', line: 'root: {{email}}'}
+  - {regexp: '^default:.*$', line: 'default: {{email}}'}
+  when: email != ""
+  tags:
+  - install
+  - mail
+
+- name: Installing msmtp package
+  package: name={{item}} state=present
+  with_items:
+  - msmtp
+  - msmtp-mta
+  notify: cleaning_packages_metadata
+  when: mail == "msmtp"
+  tags:
+  - install
+  - mail
+
+- name: Install msmtp configuration file
+  template:
+    src: msmtprc.j2
+    dest: "/etc/msmtprc"
+  when: mail == "msmtp"
+  tags:
+  - install
+  - mail
+
+#----------------------------------------------------------------------------------
+# users <=========================================================================
+#----------------------------------------------------------------------------------
+- name: Creating users
+  user:
+    name: "{{item.name}}"
+    groups: "{{item.group}}"
+    password: "{{item.password}}"
+    home: "{{item.home}}"
+    state: present
+    createhome: yes
+    append: yes
+  with_items: "{{users}}"
+  tags:
+  - install
+  - users
+
+- name: Updating permissions on homes
+  file:
+    path: "{{item.home}}"
+    mode: u+rwX,g-rwx,o-rwx
+    recurse: yes
+  with_items: "{{users}}"
+  tags:
+  - install
+  - users
+
+#----------------------------------------------------------------------------------
+# SSH <============================================================================
+#----------------------------------------------------------------------------------
+- name: Setting sshd configuration
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+  - {regexp: '^AllowTcpForwarding.*$', line: 'AllowTcpForwarding yes'}
+  - {regexp: '^PermitTunnel.*$', line: 'PermitTunnel yes'}
+  - {regexp: '^PermitRootLogin.*$', line: 'PermitRootLogin no'}
+  - {regexp: '^#Port.*$', line: 'Port {{ssh_port}}'}
+  - {regexp: '^Port.*$', line: 'Port {{ssh_port}}'}
+  tags:
+  - install
+  - ssh
+
+- name: Enabling and restart services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+  - sshd
+  tags:
+  - install
+  - ssh
+
+#----------------------------------------------------------------------------------
+# cockpit <========================================================================
+#----------------------------------------------------------------------------------
 - name: Installing cockpit repository
   shell: '. /etc/os-release && echo "deb http://deb.debian.org/debian ${VERSION_CODENAME}-backports main">/etc/apt/sources.list.d/backports.list'
   ignore_errors: False
@@ -221,7 +652,6 @@
 
 - name: Updating repositories
   shell: apt-get update -y
-  when: ansible_distribution == 'Debian'
   ignore_errors: True
   args:
     warn: no
@@ -231,7 +661,6 @@
 
 - name: Installing packages
   package: name={{item}} state=present
-  when: ansible_distribution == 'Debian'
   with_items:
   - cockpit
   - cockpit-file-sharing
@@ -241,3 +670,22 @@
   notify: cleaning_packages_metadata
   tags:
   - install
+
+#----------------------------------------------------------------------------------
+# finalize <=======================================================================
+#----------------------------------------------------------------------------------
+- name: Enabling and restart services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
+  with_items:
+  - sshd
+  - cron
+  tags:
+  - always
+
+- name: Sending a test email
+  shell: "mail -s 'Test email from host: {{ansible_hostname}}' {{email}} < /dev/null"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - always
