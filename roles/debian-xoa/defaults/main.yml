@@ -10,7 +10,8 @@ xoa_default_user: "admin@admin.net"
 xoa_default_password: "admin"
 xoa_user: xoa
 xoa_password: xoa
-xcpng_servers: [{"label": "localhost", "ip": "127.0.1"}]
+xcpng_servers:
+- {"label": "localhost", "ip": "127.0.1"}
 xcpng_user: root
 xcpng_password: xcpng
 remove_xoa_source_warnings: False

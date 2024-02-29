@@ -124,7 +124,7 @@
   - install
 
 - name: Installing
-  shell: "curl -sfL {{k3s_url}} | INSTALL_K3S_EXEC='server' sh -s"
+  shell: "curl --connect-timeout 5 -sfL {{k3s_url}} | INSTALL_K3S_EXEC='server' sh -s"
   ignore_errors: False
   args:
     chdir: /tmp
@@ -289,7 +289,7 @@
   - cilium
 
 - name: Getting Cilium version
-  shell: curl -s {{cilium_version_url}}
+  shell: curl --connect-timeout 5 -s {{cilium_version_url}}
   when: cilium_version.rc != 0
   register: cilium_cli_version
   tags:

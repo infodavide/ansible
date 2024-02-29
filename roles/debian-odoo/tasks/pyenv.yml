@@ -1,9 +1,8 @@
----
 - name: Ensure apt cache is up to date
   become: true
   apt:
     update_cache: yes
-    cache_valid_time: "{{48 * 60 * 60}}"  # consider the cache to be valid within 48 hours
+    cache_valid_time: "{{48 * 60 * 60}}" # consider the cache to be valid within 48 hours
 
 - name: Creates directory .ansible/tmp
   file:
@@ -17,23 +16,23 @@
   become: true
   apt:
     pkg:
-      - build-essential
-      - git
-      - curl
-      - libssl-dev
-      - libbz2-dev
-      - libsqlite3-dev
-      - libreadline-dev
-      - zlib1g-dev
-      - wget
-      - llvm
-      - libncurses5-dev
-      - xz-utils
-      - tk-dev
-      - libxml2-dev
-      - libxmlsec1-dev
-      - libffi-dev
-      - cargo
+    - build-essential
+    - git
+    - curl
+    - libssl-dev
+    - libbz2-dev
+    - libsqlite3-dev
+    - libreadline-dev
+    - zlib1g-dev
+    - wget
+    - llvm
+    - libncurses5-dev
+    - xz-utils
+    - tk-dev
+    - libxml2-dev
+    - libxmlsec1-dev
+    - libffi-dev
+    - cargo
     state: present
 
 - name: Install PyEnv
@@ -71,12 +70,7 @@
 - name: "Load pyenv env variables in .bashrc"
   become: true
   become_user: "{{odoo_user}}"
-  lineinfile: dest="/opt/{{odoo_user}}/.bashrc"
-              regexp="\.pyenvrc$"
-              line="source /opt/{{odoo_user}}/pyenv/.pyenvrc"
-              state=present
-              create=yes
-              mode="0644"
+  lineinfile: dest="/opt/{{odoo_user}}/.bashrc" regexp="\.pyenvrc$" line="source /opt/{{odoo_user}}/pyenv/.pyenvrc" state=present create=yes mode="0644"
 
 - name: Update Pyenv interpreter list
   become: true

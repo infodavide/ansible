@@ -1,7 +1,19 @@
 # defaults file
-firewall: ufw
-firewall_items:
-- {port: 22, proto: tcp}
 http: nginx
 https_domain: domain.com
 https_url: www.domain.com
+# Each item of the list describes an external files to copy: {"owner": "root", "group": "root", "src": "/tmp/srv/cron-1", "dest": "/etc/cron.d"}
+# The name is for information
+# The service is the name of the .service file present in the archive
+# The ower and group are used to set the permissions
+# The src is the path to the archive on your computer
+# The dest is the path of the parent target where the source will be unarchived
+external_files:
+# Each item of the list describes a Docker container and its systemd service: {"name": "container-1", "service": "container-1", "owner": "root", "group": "www-data", "src": "/tmp/srv/container-1.tar.gz", "dest": "/srv/", "path": "/srv/container-1"}
+# The name is for information
+# The service is the name of the .service file present in the archive
+# The ower and group are used to set the permissions
+# The src is the path to the archive on your computer
+# The dest is the path of the parent target where the source will be unarchived
+# The path is the absolute path of the root directory of the container on the targeted machine
+containers:

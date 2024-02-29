@@ -25,30 +25,18 @@
   package: name={{item}} state=present
   with_items:
   - curl
+  - ca-certificates
   - software-properties-common
   - apt-transport-https
   - apt-utils
   - apt
   - aptitude-common
   - aptitude
+  - gnupg
   notify: cleaning_packages_metadata
   tags:
   - install
   - docker
-
-- name: Installing packages
-  package: name={{item}} state=present
-  when: ansible_distribution == 'Debian'
-  with_items:
-  - curl
-  - ca-certificates
-  - gnupg
-  - git
-  - ufw
-  notify: cleaning_packages_metadata
-  tags:
-  - install
-  - update
 
 - name: Configuring keyrings
   shell: "install -m 0755 -d /etc/apt/keyrings"
@@ -58,8 +46,16 @@
   tags:
   - install
 
-- name: Configuring docker repository
-  shell: "curl -fsSL {{docker_repository_gpg_url}} | gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
+- name: Delete existing docker repository signature
+  file:
+    state: absent
+    path: /etc/apt/keyrings/docker.gpg
+  tags:
+  - install
+  - docker
+
+- name: Downloading docker repository signature
+  shell: "curl --connect-timeout 5 -fsSL {{docker_repository_gpg_url}} | gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
   ignore_errors: False
   args:
     warn: no
@@ -67,7 +63,7 @@
   - install
   - docker
 
-- name: Configuring of docker repository
+- name: Configuring of docker repository signature
   shell: "chmod a+r /etc/apt/keyrings/docker.gpg"
   ignore_errors: False
   args:
@@ -76,7 +72,7 @@
   - install
   - docker
 
-- name: Configuring docker repository
+- name: Adding docker repository
   shell: 'echo "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] {{docker_repository_url}} "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null'
   ignore_errors: False
   args:
@@ -87,7 +83,6 @@
 
 - name: Updating repositories
   shell: apt-get update -y
-  when: ansible_distribution == 'Debian'
   ignore_errors: False
   args:
     warn: no
@@ -97,7 +92,6 @@
 
 - name: Installing docker packages
   package: name={{item}} state=present
-  when: ansible_distribution == 'Debian'
   with_items:
   - docker-ce
   - docker-ce-rootless-extras
@@ -105,6 +99,7 @@
   - containerd.io
   - docker-buildx-plugin
   - docker-compose-plugin
+  - docker-compose
   - python3-docker
   - python3-dockerpty
   - python3-dockerpycreds

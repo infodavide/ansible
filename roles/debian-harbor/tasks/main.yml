@@ -19,7 +19,7 @@
   - update
 
 - name: Downloading installer
-  shell: "curl -s {{harbor_releases_url}}|grep browser_download_url|cut -d '\"' -f 4 | grep '\\.tgz$' | wget -i -"
+  shell: "curl --connect-timeout 5 -s {{harbor_releases_url}}|grep browser_download_url|cut -d '\"' -f 4 | grep '\\.tgz$' | wget -i -"
   ignore_errors: False
   args:
     chdir: /opt

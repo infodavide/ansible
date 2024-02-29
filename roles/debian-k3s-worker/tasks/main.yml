@@ -123,7 +123,7 @@
   - configure
 
 - name: Installing
-  shell: "curl -sfL {{k3s_url}} | INSTALL_K3S_EXEC='agent' K3S_URL=https://{{k3s_master_ip}}:{{k3s_master_port}} K3S_TOKEN={{k3s_node_token}} sh -"
+  shell: "curl --connect-timeout 5 -sfL {{k3s_url}} | INSTALL_K3S_EXEC='agent' K3S_URL=https://{{k3s_master_ip}}:{{k3s_master_port}} K3S_TOKEN={{k3s_node_token}} sh -"
   ignore_errors: False
   args:
     chdir: /tmp

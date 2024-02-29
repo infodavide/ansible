@@ -76,12 +76,22 @@
     owner: root
     group: root
     mode: 0664
+    directory_mode: 0775
+  tags:
+  - install
+  - update
+
+- name: Setting permissions on admin directory
+  shell: "chmod 770 /etc/admin"
+  ignore_errors: True
+  args:
+    warn: no
   tags:
   - install
   - update
 
 - name: Setting scripts permissions
-  shell: "chmod 777 /etc/admin/*.sh"
+  shell: "chmod 770 /etc/admin/*.sh"
   ignore_errors: True
   args:
     warn: no
@@ -94,6 +104,7 @@
     src: sudoer.j2
     dest: "/etc/sudoers.d/{{item.name}}"
   with_items: "{{users}}"
+  when: item.name | length > 0
   tags:
   - install
   - security
@@ -104,6 +115,7 @@
   args:
     warn: no
   with_items: "{{users}}"
+  when: item.name | length > 0
   tags:
   - install
   - update
@@ -208,8 +220,19 @@
   - locale
 
 - name: Extracting keymaps
-  shell: "tar xzf /tmp/kbd.tar.gz && cp -Rp /tmp/kbd/data/keymaps/* /usr/share/keymaps/ && rm -R /tmp/kbd"
+  shell: "mkdir /tmp/kbd"
   ignore_errors: True
+  args:
+    chdir: /tmp
+    warn: no
+  tags:
+  - install
+  - update
+  - locale
+
+- name: Extracting keymaps
+  shell: "tar xzf /tmp/kbd.tar.gz --strip-components=1 -C /tmp/kbd && cp -Rp /tmp/kbd/data/keymaps/* /usr/share/keymaps/ && rm -R /tmp/kbd"
+  ignore_errors: False
   args:
     chdir: /tmp
     warn: no
@@ -220,7 +243,7 @@
 
 - name: Setting default keymap
   shell: localectl set-keymap fr
-  ignore_errors: True
+  ignore_errors: False
   args:
     warn: no
   tags:
@@ -246,9 +269,9 @@
     line: "{{item.line}}"
     create: yes
   with_items:
-  - {regexp: '^export\s*LANG=', line: 'export LANG={{locale}}'}
-  - {regexp: '^export\s*LANGUAGE=', line: 'export LANGUAGE={{locale}}'}
-  - {regexp: '^export\s*LC_ALL=', line: 'export LC_ALL={{locale}}'}
+  - {regexp: '^export\s*LANG=', line: 'export LANG={{locale}}.{{encoding}}'}
+  - {regexp: '^export\s*LANGUAGE=', line: 'export LANGUAGE={{locale}}.{{encoding}}'}
+  - {regexp: '^export\s*LC_ALL=', line: 'export LC_ALL={{locale}}.{{encoding}}'}
   tags:
   - install
   - profile
@@ -394,11 +417,6 @@
   tags:
   - install
 
-- name: Auto removing packages
-  shell: apt auto-remove -y
-  tags:
-  - install
-
 - name: Installing packages
   package: name={{item}} state=present
   with_items:
@@ -431,7 +449,6 @@
   - ncurses-base
   - ncurses-bin
   - net-tools
-  - nfs-common
   - ntp
   - openssh-client
   - openssh-server
@@ -460,13 +477,405 @@
   when: secured
   with_items:
   - apparmor-utils
+  - ca-certificates
   - fail2ban
+  - logcheck
+  - rkhunter
   - sshguard
   - ufw
   notify: cleaning_packages_metadata
   tags:
   - install
 
+- name: Check if firehol.sh exists
+  stat:
+    path: /etc/admin/firehol.sh
+  register: firehol_stat
+
+- name: Adding link on firehol.sh to cron.weekly
+  file:
+    src: /etc/admin/firehol.sh
+    dest: /etc/cron.weekly/firehol.sh
+    state: link
+  when: secured and firehol_stat.stat.exists
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Create systemd service for firehol.sh
+  template:
+    src: systemd.service.j2
+    dest: /etc/systemd/system/firehol.service
+  vars:
+    service_name: firehol
+    service_command: /etc/admin/firehol.sh
+
+- name: Enabling firehol service
+  systemd: enabled=yes state=started daemon_reload=yes name=firehol
+  tags:
+  - install
+  - firewall
+  when: secured and firehol_stat.stat.exists
+
+- name: Check if ipblock.sh exists
+  stat:
+    path: /etc/admin/ipblock.sh
+  register: ipblock_stat
+
+- name: Adding link on ipblock.sh to cron.weekly
+  file:
+    src: /etc/admin/ipblock.sh
+    dest: /etc/cron.weekly/ipblock.sh
+    state: link
+  when: secured and ipblock_stat.stat.exists
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Create systemd service for ipblock.sh
+  template:
+    src: systemd.service.j2
+    dest: /etc/systemd/system/ipblock.service
+  vars:
+    service_name: ipblock
+    service_command: /etc/admin/ipblock.sh
+
+- name: Enabling ipblock service
+  systemd: enabled=yes state=started daemon_reload=yes name=ipblock
+  tags:
+  - install
+  - firewall
+  when: secured and ipblock_stat.stat.exists
+
+- name: Copying fail2ban configuration
+  copy:
+    src: files/etc/fail2ban
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+    directory_mode: 0775
+  when: secured
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Setting permissions on fail2ban directory
+  shell: "chmod 775 /etc/fail2ban"
+  ignore_errors: True
+  args:
+    warn: no
+  when: secured
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Setting sshguard configuration
+  lineinfile:
+    path: /etc/sshguard/sshguard.conf
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+  - {regexp: '^THRESHOLD.*$', line: 'THRESHOLD=10'}
+  - {regexp: '^BLOCK_TIME.*$', line: 'BLOCK_TIME=900'}
+  when: secured
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Checking if sshguard backend library exists in /usr/lib
+  stat:
+    path: /usr/lib/sshg-fw-{{firewall}}
+  register: sshg_lib_result
+  when: secured
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Checking if sshguard backend library exists in /usr/libexec
+  stat:
+    path: /usr/libexec/sshg-fw-{{firewall}}
+  register: sshg_libexec_result
+  when: secured
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Setting sshguard backend configuration
+  lineinfile:
+    path: /etc/sshguard.conf
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+  - {regexp: '^BACKEND.*$', line: 'BACKEND="/usr/lib/sshg-fw-{{firewall}}"'}
+  when: secured and sshg_lib_result.stat.exists
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Setting sshguard backend configuration
+  lineinfile:
+    path: /etc/sshguard.conf
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+  - {regexp: '^BACKEND.*$', line: 'BACKEND="/usr/libexec/sshg-fw-{{firewall}}"'}
+  when: secured and sshg_libexec_result.stat.exists
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Setting fail2ban configuration
+  lineinfile:
+    path: /etc/fail2ban/fail2ban.conf
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+  - {regexp: '^dbpurgeage.*$', line: 'dbpurgeage = 7d'}
+  when: secured
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Copying logcheck configuration
+  copy:
+    src: files/etc/logcheck
+    dest: /etc/
+    owner: root
+    group: root
+    mode: 0664
+    directory_mode: 0775
+  when: secured
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Setting permissions on logcheck directory
+  shell: "chmod 775 /etc/logcheck"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Setting logcheck configuration
+  lineinfile:
+    path: /etc/logcheck/config
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+  - {regexp: '^SYSADMIN=.*$', line: 'SYSADMIN={{email}}'}
+  when: secured
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Setting logcheck ignore configuration
+  shell: "find /etc/logcheck/violations.ignore.d/ -name 'logcheck*' -exec ln -sdf {} /etc/logcheck/ignore.d.server/ \\;"
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Setting rkhunter configuration
+  lineinfile:
+    path: /etc/rkhunter.conf
+    backup: no
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+  - {regexp: '[#]?MIRRORS_MODE=.*$', line: 'MIRRORS_MODE=0'}
+  - {regexp: '[#]?UPDATE_MIRRORS=.*$', line: 'UPDATE_MIRRORS=1'}
+  - {regexp: '[#]?WEB_CMD=.*$', line: 'WEB_CMD=""'}
+  when: secured
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Updating rkhunter
+  shell: rkhunter -q --update
+  ignore_errors: True
+  when: secured
+  tags:
+  - install
+  - security
+  - firewall
+
+- name: Installing firewalld package
+  package: name={{item}} state=present
+  with_items:
+  - firewalld
+  notify: cleaning_packages_metadata
+  when: firewall == "firewalld"
+  tags:
+  - install
+  - firewall
+
+- name: Enabling firewall service
+  systemd: enabled=yes state=started daemon_reload=yes name=firewalld
+  tags:
+  - install
+  - firewall
+  when: secured and firewall == "firewalld"
+
+- name: Setting firewall rule for SSH (firewalld)
+  shell: firewall-cmd --permanent --zone=public --add-port={{ssh_port}}/tcp
+  args:
+    warn: no
+  when: secured and firewall == "firewalld"
+  tags:
+  - install
+  - firewall
+
+- name: Setting firewall rules (firewalld)
+  shell: firewall-cmd --permanent --zone=public --add-port={{item.port}}/{{item.proto}}
+  args:
+    warn: no
+  with_items: "{{firewall_items}}"
+  when: secured and firewall == "firewalld" and (item.port > 0) and (item.proto | length > 0)
+  tags:
+  - install
+  - firewall
+
+- name: Allow multicast traffic (firewalld)
+  shell: firewall-cmd --permanent --add-service=samba && firewall-cmd --permanent --add-protocol=igmp && firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 10 -d 239.255.255.250 -j ACCEPT && firewall-cmd --reload
+  when: secured and firewall == "firewalld"
+  tags:
+  - install
+  - firewall
+
+- name: Installing iptables package
+  package: name={{item}} state=present
+  with_items:
+  - iptables
+  notify: cleaning_packages_metadata
+  when: secured and firewall == "iptables"
+  tags:
+  - install
+  - firewall
+
+- name: Enabling firewall service
+  systemd: enabled=yes state=started daemon_reload=yes name=iptables
+  tags:
+  - install
+  - firewall
+  when: secured and firewall == "iptables"
+
+- name: Setting firewall rule for SSH (iptables)
+  shell: if [[ $(/sbin/iptables -L|grep dpt:{{ssh_port}}|wc -l) -eq "0" ]]; then /sbin/iptables -I INPUT -p tcp --dport {{ssh_port}} -j ACCEPT && /sbin/service iptables save; fi
+  when: secured and firewall == "iptables"
+  tags:
+  - install
+  - firewall
+
+- name: Setting firewall rules (iptables)
+  shell: if [[ $(/sbin/iptables -L|grep dpt:{{item.port}}|wc -l) -eq "0" ]]; then /sbin/iptables -I INPUT -p {{item.proto}} --dport {{item.port}} -j ACCEPT && /sbin/service iptables save; fi
+  with_items: "{{firewall_items}}"
+  when: secured and firewall == "iptables" and (item.port > 0) and (item.proto | length > 0)
+  tags:
+  - install
+  - firewall
+
+- name: Installing ufw package
+  package: name={{item}} state=present
+  with_items:
+  - iptables
+  - ufw
+  notify: cleaning_packages_metadata
+  when: secured and firewall == "ufw"
+  tags:
+  - install
+  - firewall
+
+- name: Enabling firewall service
+  systemd: enabled=yes state=started daemon_reload=yes name=ufw
+  tags:
+  - install
+  - firewall
+  when: secured and firewall == "ufw"
+
+- name: Setting ufw rule for SSH on public zone
+  shell: ufw allow {{ssh_port}}/tcp
+  args:
+    warn: no
+  when: secured and firewall == "ufw"
+  tags:
+  - install
+  - firewall
+
+- name: Setting ufw rules on public zone
+  shell: ufw allow {{item.port}}/{{item.proto}}
+  args:
+    warn: no
+  with_items: "{{firewall_items}}"
+  when: secured and firewall == "ufw" and (item.port > 0) and (item.proto | length > 0)
+  tags:
+  - install
+  - firewall
+
+- name: Enabling firewall service
+  systemd: enabled=yes state=restarted daemon_reload=yes name=firewalld
+  tags:
+  - install
+  - firewall
+  when: secured and firewall == "firewalld"
+
+- name: Enabling firewall service
+  systemd: enabled=yes state=restarted daemon_reload=yes name=ufw
+  tags:
+  - install
+  - firewall
+  when: secured and firewall == "ufw"
+
+- name: Enabling firewall service
+  shell: "echo 'y' | sudo ufw enable"
+  tags:
+  - install
+  - firewall
+  when: secured and firewall == "ufw"
+
+- name: Display firewall rules
+  command: ufw status numbered
+  register: ufw_status_output
+  when: secured and firewall == "ufw"
+  tags:
+  - install
+  - firewall
+
+- name: Display firewall rules
+  debug:
+    msg: "{{ufw_status_output.stdout}}"
+  when: secured and firewall == "ufw"
+  tags:
+  - install
+  - firewall
+
+- name: Enabling firewall service
+  systemd: enabled=yes state=restarted daemon_reload=yes name=iptables
+  tags:
+  - install
+  - firewall
+  when: secured and firewall == "iptables"
 #----------------------------------------------------------------------------------
 # logrotate <======================================================================
 #----------------------------------------------------------------------------------
@@ -509,6 +918,7 @@
     regexp: '^(\s*)rotate\s*.*$'
     replace: '\1rotate {{logrotate_rotate}}'
   with_items: "{{logrotate_files.files}}"
+  when: item.path | length > 0
 
 - name: Replace maxage values
   replace:
@@ -516,6 +926,7 @@
     regexp: '^(\s*)maxage\s*.*$'
     replace: '\1maxage {{logrotate_maxage}}'
   with_items: "{{logrotate_files.files}}"
+  when: item.path | length > 0
 
 - name: Replace size values
   replace:
@@ -523,6 +934,7 @@
     regexp: '^size\s*.*$'
     replace: 'size {{logrotate_size}}'
   with_items: "{{logrotate_files.files}}"
+  when: item.path | length > 0
 
 #----------------------------------------------------------------------------------
 # mail <===========================================================================
@@ -574,6 +986,7 @@
     createhome: yes
     append: yes
   with_items: "{{users}}"
+  when: (item.name | length > 0) and (item.group | length > 0) and (item.password | length > 0) and (item.home | length > 0)
   tags:
   - install
   - users
@@ -584,6 +997,7 @@
     mode: u+rwX,g-rwx,o-rwx
     recurse: yes
   with_items: "{{users}}"
+  when: item.home | length > 0
   tags:
   - install
   - users
@@ -598,11 +1012,17 @@
     regexp: "{{item.regexp}}"
     line: "{{item.line}}"
   with_items:
-  - {regexp: '^AllowTcpForwarding.*$', line: 'AllowTcpForwarding yes'}
-  - {regexp: '^PermitTunnel.*$', line: 'PermitTunnel yes'}
-  - {regexp: '^PermitRootLogin.*$', line: 'PermitRootLogin no'}
-  - {regexp: '^#Port.*$', line: 'Port {{ssh_port}}'}
-  - {regexp: '^Port.*$', line: 'Port {{ssh_port}}'}
+  - {regexp: '^#?AllowTcpForwarding\s*.*$', line: 'AllowTcpForwarding yes'}
+  - {regexp: '^#?PermitTunnel\s*.*$', line: 'PermitTunnel yes'}
+  - {regexp: '^#?PermitRootLogin\s*.*$', line: 'PermitRootLogin no'}
+  - {regexp: '^#?Port\s*.*$', line: 'Port {{ssh_port}}'}
+  - {regexp: '^#?StrictModes\s*.*$', line: 'StrictModes yes'}
+  - {regexp: '^#?LoginGraceTime\s*.*$', line: 'LoginGraceTime 2m'}
+  - {regexp: '^#?MaxAuthTries\s*.*$', line: 'MaxAuthTries 2'}
+  - {regexp: '^#?MaxSessions\s*.*$', line: 'MaxSessions 3'}
+  - {regexp: '^#?ChallengeResponseAuthentication\s*.*$', line: 'ChallengeResponseAuthentication no'}
+  - {regexp: '^#?X11Forwarding\s*.*$', line: 'X11Forwarding no'}
+  - {regexp: '^Subsystem\s*sftp.*$', line: 'Subsystem sftp internal-sftp'}
   tags:
   - install
   - ssh
@@ -618,35 +1038,39 @@
 #----------------------------------------------------------------------------------
 # cockpit <========================================================================
 #----------------------------------------------------------------------------------
-- name: Installing cockpit repository
+- name: Installing backports repository
   shell: '. /etc/os-release && echo "deb http://deb.debian.org/debian ${VERSION_CODENAME}-backports main">/etc/apt/sources.list.d/backports.list'
   ignore_errors: False
   register: results
   args:
     chdir: /tmp
     warn: no
+  when: not secured
   tags:
   - install
 
 - name: Display output
   debug:
     var: results
+  when: not secured
   tags:
   - install
 
 - name: Installing cockpit repository
-  shell: 'curl -sSL https://repo.45drives.com/setup|bash'
+  shell: 'curl --connect-timeout 5 -sSL https://repo.45drives.com/setup|bash'
   ignore_errors: True
   register: results
   args:
     chdir: /tmp
     warn: no
+  when: not secured
   tags:
   - install
 
 - name: Display output
   debug:
     var: results
+  when: not secured
   tags:
   - install
 
@@ -655,11 +1079,12 @@
   ignore_errors: True
   args:
     warn: no
+  when: not secured
   notify: cleaning_packages_metadata
   tags:
   - install
 
-- name: Installing packages
+- name: Installing cockpit packages
   package: name={{item}} state=present
   with_items:
   - cockpit
@@ -668,24 +1093,52 @@
   - cockpit-navigator
   - cockpit-sosreport
   notify: cleaning_packages_metadata
+  when: not secured
   tags:
   - install
 
+- name: Uninstalling cockpit packages
+  package: name={{item}} state=absent
+  ignore_errors: True
+  with_items:
+  - cockpit
+  - cockpit-file-sharing
+  - cockpit-identities
+  - cockpit-navigator
+  - cockpit-sosreport
+  - nfs-common
+  - nfs-kernel-server
+  - rpcbind
+  - wpasupplicant
+  - x11-common
+  - xdg-user-dirs
+  notify: cleaning_packages_metadata
+  when: secured
+  tags:
+  - install
 #----------------------------------------------------------------------------------
 # finalize <=======================================================================
 #----------------------------------------------------------------------------------
+- name: Removing broken links
+  shell: "find /etc -xtype l -exec rm {} \\;"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+
+- name: Removing unused packages
+  shell: apt -y auto-remove
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+
 - name: Enabling and restart services
   systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
   with_items:
   - sshd
   - cron
-  tags:
-  - always
-
-- name: Sending a test email
-  shell: "mail -s 'Test email from host: {{ansible_hostname}}' {{email}} < /dev/null"
-  ignore_errors: True
-  args:
-    warn: no
   tags:
   - always

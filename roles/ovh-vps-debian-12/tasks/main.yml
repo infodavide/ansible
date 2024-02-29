@@ -5,12 +5,13 @@
     owner: root
     group: root
     mode: 0664
+    directory_mode: 0775
   tags:
   - install
   - update
 
-- name: Setting scripts permissions
-  shell: "chmod 777 /etc/admin/*.sh"
+- name: Setting permissions on admin directory
+  shell: "chmod 770 /etc/admin"
   ignore_errors: True
   args:
     warn: no
@@ -18,6 +19,97 @@
   - install
   - update
 
+- name: Setting scripts permissions
+  shell: "chmod 770 /etc/admin/*.sh"
+  ignore_errors: True
+  args:
+    warn: no
+  tags:
+  - install
+  - update
+
+- name: Copying external files
+  copy:
+    src: "{{item.src}}"
+    dest: "{{item.dest}}"
+    owner: "{{item.owner}}"
+    group: "{{item.group}}"
+    mode: 0664
+    directory_mode: 0775
+  with_items: "{{external_files}}"
+  when: (item.src | length > 0) and (item.dest | length > 0) and (item.owner | length > 0) and (item.group | length > 0)
+  tags:
+  - install
+  - update
+#----------------------------------------------------------------------------------
+# containers <=====================================================================
+#----------------------------------------------------------------------------------
+- name: Copying containers
+  unarchive:
+    src: "{{item.src}}"
+    dest: "{{item.dest}}"
+  with_items: "{{containers}}"
+  when: (item.src | length > 0) and (item.dest | length > 0)
+  tags:
+  - install
+  - update
+  - containers
+
+- name: Setting containers owner
+  shell: "chown -R {{item.owner}}:{{item.group}} {{item.dest}}"
+  ignore_errors: True
+  args:
+    warn: no
+  with_items: "{{containers}}"
+  when: (item.owner | length > 0) and (item.group | length > 0) and (item.dest | length > 0)
+  tags:
+  - install
+  - update
+  - containers
+
+- name: Setting containers permissions
+  shell: "chmod -R u+rwX,g+rwX,o+rX-w {{item.dest}}"
+  ignore_errors: True
+  args:
+    warn: no
+  with_items: "{{containers}}"
+  when: item.dest | length > 0
+  tags:
+  - install
+  - update
+  - containers
+
+- name: Setting containers permissions
+  shell: "chmod 770 {{item.path}}/*.sh"
+  ignore_errors: True
+  args:
+    warn: no
+  with_items: "{{containers}}"
+  when: item.path | length > 0
+  tags:
+  - install
+  - update
+  - containers
+
+- name: Setting containers services
+  shell: "find {{item.path}} -name '*.service' -exec ln -sf {} /etc/systemd/system/ \\;"
+  ignore_errors: True
+  args:
+    warn: no
+  with_items: "{{containers}}"
+  when: item.path | length > 0
+  tags:
+  - install
+  - update
+  - containers
+
+- name: Enabling containers services
+  systemd: enabled=yes state=restarted daemon_reload=yes name={{item.service}}
+  ignore_errors: True
+  with_items: "{{containers}}"
+  when: item.service | length > 0
+  tags:
+  - always
 #----------------------------------------------------------------------------------
 # nginx <==========================================================================
 #----------------------------------------------------------------------------------
@@ -59,7 +151,6 @@
   tags:
   - install
   - nginx
-
 #----------------------------------------------------------------------------------
 # cerbot <==========================================================================
 #----------------------------------------------------------------------------------
@@ -91,344 +182,22 @@
   tags:
   - install
   - nginx
-
-#----------------------------------------------------------------------------------
-# firewall <=======================================================================
-#----------------------------------------------------------------------------------
-- name: Creating symbolic link for firehol task
-  file:
-    src: "/etc/admin/firehol.sh"
-    dest: "/etc/cron.daily/firehol.sh"
-    state: link
-  tags:
-  - install
-  - firewall
-
-- name: Creating symbolic link for ipblock task
-  file:
-    src: "/etc/admin/ipblock.sh"
-    dest: "/etc/cron.daily/ipblock.sh"
-    state: link
-  tags:
-  - install
-  - firewall
-
-- name: Installing firewalld package
-  package: name={{item}} state=present
-  with_items:
-  - firewalld
-  notify: cleaning_packages_metadata
-  when: firewall == "firewalld"
-  tags:
-  - install
-  - firewall
-
-- name: Enabling firewall service
-  systemd: enabled=yes state=started daemon_reload=yes name=firewalld
-  tags:
-  - install
-  - firewall
-  when: firewall == "firewalld"
-
-- name: Setting firewall rules (firewalld)
-  shell: firewall-cmd --permanent --zone=public --add-port={{item.port}}/{{item.proto}}
-  args:
-    warn: no
-  with_items: "{{firewall_items}}"
-  when: firewall == "firewalld"
-  tags:
-  - install
-  - firewall
-
-- name: Allow multicast traffic (firewalld)
-  shell: firewall-cmd --permanent --add-service=samba && firewall-cmd --permanent --add-protocol=igmp && firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 10 -d 239.255.255.250 -j ACCEPT && firewall-cmd --reload
-  when: firewall == "firewalld"
-  tags:
-  - install
-  - firewall
-
-- name: Installing iptables package
-  package: name={{item}} state=present
-  with_items:
-  - iptables
-  notify: cleaning_packages_metadata
-  when: firewall == "iptables"
-  tags:
-  - install
-  - firewall
-
-- name: Enabling firewall service
-  systemd: enabled=yes state=started daemon_reload=yes name=iptables
-  tags:
-  - install
-  - firewall
-  when: firewall == "iptables"
-
-- name: Setting firewall rules (iptables)
-  shell: if [[ $(/sbin/iptables -L|grep dpt:{{item.port}}|wc -l) -eq "0" ]]; then /sbin/iptables -I INPUT -p {{item.proto}} --dport {{item.port}} -j ACCEPT && /sbin/service iptables save; fi
-  with_items: "{{firewall_items}}"
-  when: firewall == "iptables"
-  tags:
-  - install
-  - firewall
-
-- name: Installing ufw package
-  package: name={{item}} state=present
-  with_items:
-  - iptables
-  - ufw
-  notify: cleaning_packages_metadata
-  when: firewall == "ufw"
-  tags:
-  - install
-  - firewall
-
-- name: Enabling firewall service
-  systemd: enabled=yes state=started daemon_reload=yes name=ufw
-  tags:
-  - install
-  - firewall
-  when: firewall == "ufw"
-
-- name: Setting ufw rules on public zone
-  shell: ufw allow {{item.port}}/{{item.proto}}
-  args:
-    warn: no
-  with_items: "{{firewall_items}}"
-  when: firewall == "ufw"
-  tags:
-  - install
-  - firewall
-
-- name: Enabling firewall service
-  systemd: enabled=yes state=restarted daemon_reload=yes name=firewalld
-  tags:
-  - install
-  - firewall
-  when: firewall == "firewalld"
-
-- name: Enabling firewall service
-  systemd: enabled=yes state=restarted daemon_reload=yes name=ufw
-  tags:
-  - install
-  - firewall
-  when: firewall == "ufw"
-
-- name: Enabling firewall service
-  shell: "echo 'y' | sudo ufw enable"
-  tags:
-  - install
-  - firewall
-  when: firewall == "ufw"
-
-- name: Display firewall rules
-  command: ufw status numbered
-  register: ufw_status_output
-  tags:
-  - install
-  - firewall
-
-- name: Display firewall rules
-  debug:
-    msg: "{{ufw_status_output.stdout}}"
-  tags:
-  - install
-  - firewall
-
-- name: Enabling firewall service
-  systemd: enabled=yes state=restarted daemon_reload=yes name=iptables
-  tags:
-  - install
-  - firewall
-  when: firewall == "iptables"
-
-#----------------------------------------------------------------------------------
-# security <=======================================================================
-#----------------------------------------------------------------------------------
-- name: Installing security packages
-  package: name={{item}} state=present
-  with_items:
-  - fail2ban
-  - sshguard
-  - rkhunter
-  #    - aide
-  notify: cleaning_packages_metadata
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Installing security packages
-  package: name={{item}} state=present
-  with_items:
-  - ca-certificates
-  - logcheck
-  notify: cleaning_packages_metadata
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Copying fail2ban configuration
-  copy:
-    src: files/etc/fail2ban
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0664
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Setting sshguard configuration
-  lineinfile:
-    path: /etc/sshguard/sshguard.conf
-    backup: no
-    regexp: "{{item.regexp}}"
-    line: "{{item.line}}"
-  with_items:
-  - {regexp: '^THRESHOLD.*$', line: 'THRESHOLD=10'}
-  - {regexp: '^BLOCK_TIME.*$', line: 'BLOCK_TIME=900'}
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Checking if sshguard backend library exists in /usr/lib
-  stat:
-    path: /usr/lib/sshg-fw-{{firewall}}
-  register: sshg_lib_result
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Checking if sshguard backend library exists in /usr/libexec
-  stat:
-    path: /usr/libexec/sshg-fw-{{firewall}}
-  register: sshg_libexec_result
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Setting sshguard backend configuration
-  lineinfile:
-    path: /etc/sshguard.conf
-    backup: no
-    regexp: "{{item.regexp}}"
-    line: "{{item.line}}"
-  with_items:
-  - {regexp: '^BACKEND.*$', line: 'BACKEND="/usr/lib/sshg-fw-{{firewall}}"'}
-  when: sshg_lib_result.stat.exists
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Setting sshguard backend configuration
-  lineinfile:
-    path: /etc/sshguard.conf
-    backup: no
-    regexp: "{{item.regexp}}"
-    line: "{{item.line}}"
-  with_items:
-  - {regexp: '^BACKEND.*$', line: 'BACKEND="/usr/libexec/sshg-fw-{{firewall}}"'}
-  when: sshg_libexec_result.stat.exists
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Setting fail2ban configuration
-  lineinfile:
-    path: /etc/fail2ban/fail2ban.conf
-    backup: no
-    regexp: "{{item.regexp}}"
-    line: "{{item.line}}"
-  with_items:
-  - {regexp: '^dbpurgeage.*$', line: 'dbpurgeage = 7d'}
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Copying logcheck configuration
-  copy:
-    src: files/etc/logcheck
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0664
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Setting logcheck configuration
-  lineinfile:
-    path: /etc/logcheck/config
-    backup: no
-    regexp: "{{item.regexp}}"
-    line: "{{item.line}}"
-  with_items:
-  - {regexp: '^SYSADMIN=.*$', line: 'SYSADMIN={{email}}'}
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Setting rkhunter configuration
-  lineinfile:
-    path: /etc/rkhunter.conf
-    backup: no
-    regexp: "{{item.regexp}}"
-    line: "{{item.line}}"
-  with_items:
-  - {regexp: '[#]?MIRRORS_MODE=.*$', line: 'MIRRORS_MODE=0'}
-  - {regexp: '[#]?UPDATE_MIRRORS=.*$', line: 'UPDATE_MIRRORS=1'}
-  - {regexp: '[#]?WEB_CMD=.*$', line: 'WEB_CMD=""'}
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Updating rkhunter
-  shell: rkhunter -q --update
-  ignore_errors: True
-  tags:
-  - install
-  - security
-  - firewall
-
-- name: Copying gnupg configuration
-  copy:
-    src: files/etc/gnupg
-    dest: /etc/
-    owner: root
-    group: root
-    mode: 0664
-  tags:
-  - install
-  - security
-  - firewall
-
 #----------------------------------------------------------------------------------
 # finalize <=======================================================================
 #----------------------------------------------------------------------------------
 - name: Enabling and restart services
   systemd: enabled=yes state=restarted daemon_reload=yes name={{item}}
   with_items:
-  - sshd
   - cron
+  - nginx
+  - sshd
   - sshguard
   - ufw
   tags:
   - install
 
 - name: Sending a test email
-  shell: "mail -s 'Test email from host: {{ansible_hostname}}' {{email}} < /dev/null"
+  shell: "echo 'Test email from host: {{ansible_hostname}}.' | mail -s 'Test email from host: {{ansible_hostname}}' {{email}}"
   ignore_errors: True
   args:
     warn: no
