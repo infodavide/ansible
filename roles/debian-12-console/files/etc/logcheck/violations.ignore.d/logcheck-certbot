@@ -1,2 +1,3 @@
-\w{3} [ :0-9]{11} [._[:alnum:]-]+ systemd\[[0-9]+\]: Finished Cleanup.*
-\w{3} [ :0-9]{11} [._[:alnum:]-]+ systemd\[[0-9]+\]: Finished Certbot.*
+^\w{3} [ :0-9]{11} [._[:alnum:]-]+ systemd\[[0-9]+\]: Finished Cleanup.*$
+^\w{3} [ :0-9]{11} [._[:alnum:]-]+ systemd\[[0-9]+\]: Finished Certbot.*$
+^\w{3} [ :0-9]{11} [._[:alnum:]-]+ certbot\[[0-9]+\]:.*chardet.*$
