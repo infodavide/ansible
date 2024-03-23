@@ -18,25 +18,6 @@
   - install
   - update
 
-- name: Copying ups scheduling script
-  shell: "cp /etc/nut/upssched-cmd /bin/upssched-cmd"
-  ignore_errors: True
-  args:
-    warn: no
-  tags:
-  - install
-  - update
-
-- name: Setting permissions on ups scheduling script
-  file:
-    path: /bin/upssched-cmd
-    owner: root
-    group: nut
-    mode: '0770'
-  tags:
-  - install
-  - update
-
 - name: Updating packages
   shell: apt-get update -y && apt-get upgrade -y
   when: ansible_distribution == 'Debian'

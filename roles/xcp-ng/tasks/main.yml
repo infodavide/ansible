@@ -16,6 +16,69 @@
   tags:
   - install
 
+- name: Copying ups scheduling script
+  shell: "cp /etc/nut/upssched-cmd /bin/upssched-cmd"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+  - update
+
+- name: Setting ups permissions
+  shell: "chown -R root:nut /etc/nut && chmod -R u+rwX,g+rwX /etc/nut"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+  - update
+
+- name: Setting permissions on ups scheduling script
+  file:
+    path: /bin/upssched-cmd
+    owner: root
+    group: nut
+    mode: '0770'
+  tags:
+  - install
+  - update
+
+- name: Allowing nut on ups devices
+  shell: "touch /etc/udev/rules.d/90-nut-ups.rules"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - install
+  - update
+
+- name: Allowing nut on ups devices
+  lineinfile:
+    dest: /etc/udev/rules.d/90-nut-ups.rules
+    state: present
+    line: 'ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0463", ATTR{idProduct}=="ffff", MODE="0660", GROUP="nut"'
+  tags:
+  - install
+  - update
+
+- name: Denying ups devices for usb passthrough
+  lineinfile:
+    dest: /etc/xensource/usb-policy.conf
+    state: present
+    line: 'DENY:vid=0463 pid=ffff # MGE UPS Systems UPS'
+  tags:
+  - install
+  - update
+
+- name: Creating symbolic link for ups
+  file:
+    src: "/usr/lib/tmpfiles.d/nut-run.conf"
+    dest: "/etc/tmpfiles.d/nut-run.conf"
+    state: link
+  tags:
+  - install
+
 - name: Creating symbolic link for xe-custom-startup.sh
   file:
     src: "/etc/admin/xe-custom-startup.sh"
