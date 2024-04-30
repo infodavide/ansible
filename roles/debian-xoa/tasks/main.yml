@@ -33,8 +33,10 @@
   package: name={{item}} state=present
   when: ansible_distribution == 'Debian'
   with_items:
+  - ansible
   - curl
   - git
+  - jq
   notify: cleaning_packages_metadata
   tags:
   - install
@@ -249,12 +251,23 @@
   - install
 
 - name: Adding user session using xo-cli
-  shell: "xo-cli user.create email='{{xoa_user}}' password='{{xoa_password}}' permission='admin'"
+  shell: "xo-cli user.create \
+    email='{{xoa_user}}' \
+    password='{{xoa_password}}' \
+    permission='admin'"
   ignore_errors: True
   args:
     warn: no
   tags:
   - install
+
+- name: Getting user id
+  shell: "xo-cli user.getAll --json|jq '.[]|select(.email==\"{{xoa_user}}\")|.id'"
+  register: xoa_user_id
+  tags:
+  - always
+  - install
+  - update
 
 - name: Closing existing session using xo-cli
   shell: "xo-cli --unregister"
@@ -276,14 +289,282 @@
   - install
   - update
 
+- name: Listing existing servers using xo-cli
+  shell: "xo-cli server.getAll --json|jq '.[]|.id'"
+  register: server_getall
+  ignore_errors: False
+  tags:
+  - add-remotes
+  - install
+  - update
+
+- name: Removing servers using xo-cli
+  shell: "xo-cli server.remove id={{item.1}}"
+  ignore_errors: False
+  with_indexed_items: "{{server_getall.stdout_lines}}"
+  args:
+    warn: no
+  tags:
+  - add-remotes
+  - install
+  - update
+
 - name: Adding xcp-ng servers using xo-cli
-  shell: "xo-cli server.add label='{{item.label}}' host='{{item.ip}}' username={{xcpng_user}} password='{{xcpng_password}}' autoConnect=true allowUnauthorized=true"
-  ignore_errors: True
+  shell: "xo-cli server.add \
+    label='{{item.label}}' \
+    host='{{item.ip}}' \
+    username={{xcpng_user}} \
+    password='{{xcpng_password}}' \
+    autoConnect=true \
+    allowUnauthorized=true"
+  ignore_errors: False
   with_items: "{{xcpng_servers}}"
   args:
     warn: no
   tags:
   - add-servers
+  - install
+  - update
+
+- name: Listing existing backup jobs using xo-cli
+  shell: "xo-cli backupNg.getAllJobs --json|jq '.[]|.id'"
+  register: backupng_getall
+  ignore_errors: False
+  tags:
+  - add-jobs
+  - install
+  - update
+
+- name: Listing existing metadata backup jobs using xo-cli
+  shell: "xo-cli metadataBackup.getAllJobs --json|jq '.[]|.id'"
+  register: metadatabackup_getall
+  ignore_errors: False
+  tags:
+  - add-jobs
+  - install
+  - update
+
+- name: Listing existing schedules using xo-cli
+  shell: "xo-cli schedule.getAll --json|jq '.[]|.id'"
+  register: schedule_getall
+  ignore_errors: False
+  tags:
+  - add-jobs
+  - install
+  - update
+
+- name: Removing existing backup jobs using xo-cli
+  shell: "xo-cli backupNg.deleteJob id={{item.1}}"
+  ignore_errors: False
+  with_indexed_items: "{{backupng_getall.stdout_lines}}"
+  args:
+    warn: no
+  tags:
+  - add-jobs
+  - install
+  - update
+
+- name: Removing existing metadata backup jobs using xo-cli
+  shell: "xo-cli metadataBackup.deleteJob id={{item.1}}"
+  ignore_errors: False
+  with_indexed_items: "{{metadatabackup_getall.stdout_lines}}"
+  args:
+    warn: no
+  tags:
+  - add-jobs
+  - install
+  - update
+
+- name: Removing existing schedules using xo-cli
+  shell: "xo-cli schedule.delete id={{item.1}}"
+  ignore_errors: False
+  with_indexed_items: "{{schedule_getall.stdout_lines}}"
+  args:
+    warn: no
+  tags:
+  - add-jobs
+  - install
+  - update
+
+- name: Listing existing remotes using xo-cli
+  shell: "xo-cli remote.getAll --json|jq '.[]|.id'"
+  register: remote_getall
+  ignore_errors: False
+  tags:
+  - add-remotes
+  - install
+  - update
+
+- name: Removing remotes using xo-cli
+  shell: "xo-cli remote.delete id={{item.1}}"
+  ignore_errors: False
+  with_indexed_items: "{{remote_getall.stdout_lines}}"
+  args:
+    warn: no
+  tags:
+  - add-remotes
+  - install
+  - update
+
+- name: Adding remotes using xo-cli
+  shell: "xo-cli remote.create \
+    name='{{item.name}}' \
+    url='{{item.url}}'"
+  ignore_errors: False
+  with_items: "{{xoa_remotes}}"
+  args:
+    warn: no
+  tags:
+  - add-remotes
+  - install
+  - update
+
+- name: Getting remote id using xo-cli
+  shell: "xo-cli remote.getAll --json|jq '.[]|select(.name==\"{{xoa_remote_backup}}\")|.id'"
+  register: xoa_remote_id
+  ignore_errors: False
+  tags:
+  - add-remotes
+  - install
+  - update
+
+- name: Getting user id
+  shell: "xo-cli user.getAll --json|jq '.[]|select(.email==\"{{xoa_user}}\")|.id'"
+  register: xoa_user_id
+  tags:
+  - always
+  - install
+  - update
+
+- name: Adding metadata and configuration backup job using xo-cli
+  shell: "xo-cli metadataBackup.createJob \
+    name=\"{{xoa_metadata_backup.name}}\" \
+    remotes='json:{ 
+      \"id\": {{xoa_remote_id.stdout}} 
+    }' \
+    schedules='json:{ 
+      \"bavyvq5rapl\": { 
+        \"cron\": \"{{xoa_metadata_backup.cron}}\", 
+        \"enabled\": true, 
+        \"name\": \"{{xoa_metadata_backup.name}} schedule\", 
+        \"timezone\": \"{{xoa_time_zone}}\"
+      } 
+    }' \
+    settings='json:{ 
+      \"bavyvq5rapl\": { 
+        \"retentionPoolMetadata\": {{xoa_metadata_backup.retention}}, 
+        \"retentionXoMetadata\": {{xoa_metadata_backup.retention}}
+      } 
+    }' \
+    xoMetadata=true"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - add-jobs
+  - install
+  - update
+
+- name: Listing existing vm using xo-cli
+  shell: xo-cli --list-objects type=VM|jq '.[]|.id'|paste -sd ','
+  register: vm_getall
+  ignore_errors: False
+  tags:
+  - add-jobs
+  - install
+  - update
+
+- name: Getting health check sr id
+  shell: xo-cli --list-objects type='SR' name_label='{{xoa_health_check_sr}}'|jq '.[]|.id'
+  register: xoa_health_check_sr_id
+  tags:
+  - always
+  - install
+  - update
+
+- name: Adding rolling snaphosts job using xo-cli
+  shell: "xo-cli backupNg.createJob \
+    mode=\"full\" \
+    name=\"{{xoa_rolling_snaphosts.name}}\" \
+    schedules='json:{ 
+      \"gbkk1mbemhg\": { 
+        \"cron\": \"{{xoa_rolling_snaphosts.cron}}\", 
+        \"enabled\": true, 
+        \"name\": \"{{xoa_rolling_snaphosts.name}} schedule\", 
+        \"timezone\": \"{{xoa_time_zone}}\"
+      } 
+    }' \
+    remotes='json:{ 
+      \"id\": {{xoa_remote_id.stdout}} 
+    }' \
+    settings='json:{
+      \"\": {
+        \"concurrency\": {{xoa_backup_concurrency}},
+        \"nRetriesVmBackupFailures\": {{xoa_backup_retries}},
+        \"timeout\": {{xoa_backup_timeout}},
+        \"offlineSnapshot\": false,
+        \"checkpointSnapshot\": true
+      },
+      \"gbkk1mbemhg\": {
+        \"healthCheckSr\": {{xoa_health_check_sr_id.stdout}},
+        \"healthCheckVmsWithTags\": [],
+        \"snapshotRetention\": {{xoa_rolling_snaphosts.retention}}
+      }
+    }' \
+    vms='json:{
+      \"id\": {
+        \"__or\": [ {{vm_getall.stdout}} ] 
+      } 
+    }'"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - add-jobs
+  - install
+  - update
+
+- name: Adding vm backups job using xo-cli
+  shell: "xo-cli backupNg.createJob \
+    mode=\"full\" \
+    compression=\"zstd\" \
+    name=\"{{xoa_vm_backups.name}}\" \
+    schedules='json:{ 
+      \"fdi73l44ewf\": {
+        \"cron\": \"{{xoa_vm_backups.cron}}\", 
+        \"enabled\": true,
+        \"name\": \"{{xoa_vm_backups.name}} schedule\",
+        \"timezone\": \"{{xoa_time_zone}}\"
+      }
+    }' \
+    remotes='json:{ 
+      \"id\": {{xoa_remote_id.stdout}} 
+    }' \
+    settings='json:{
+      \"\": {
+        \"concurrency\": {{xoa_backup_concurrency}},
+        \"nRetriesVmBackupFailures\": {{xoa_backup_retries}},
+        \"timeout\": {{xoa_backup_timeout}},
+        \"deleteFirst\": {{xoa_backup_delete_first|lower}},
+        \"offlineSnapshot\": false,
+        \"checkpointSnapshot\": true
+      },
+      \"fdi73l44ewf\": {
+        \"exportRetention\": {{xoa_vm_backups.retention}},
+        \"healthCheckSr\": {{xoa_health_check_sr_id.stdout}},
+        \"healthCheckVmsWithTags\": []
+      }
+    }' \
+    vms='json:{
+      \"id\": {
+        \"__or\": [ {{vm_getall.stdout}} ] 
+      } 
+    }'"
+  ignore_errors: False
+  args:
+    warn: no
+  tags:
+  - add-jobs
   - install
   - update
 

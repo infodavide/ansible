@@ -10,6 +10,18 @@ xoa_default_user: "admin@admin.net"
 xoa_default_password: "admin"
 xoa_user: xoa
 xoa_password: xoa
+xoa_time_zone: "Europe/Rome"
+xoa_remote_backup: "backups"
+xoa_backup_timeout: 7200000
+xoa_backup_concurrency: 2
+xoa_backup_retries: 3
+xoa_backup_delete_first: True
+xoa_health_check_sr: "Suspend repository"
+xoa_metadata_backup: { "cron": "0 12 * * *", "name": "metadata backup", "retention": 2 }
+xoa_vm_backups: { "cron": "40 12 * * 6", "name": "vm backups", "retention": 1 }
+xoa_rolling_snaphosts: { "cron": "15 12 * * *", "name": "rolling snapshots", "retention": 2}
+xoa_remotes:
+- {"name": "backups", "url": "smb://xoa:admin\\\\server\\share\\directory"}
 xcpng_servers:
 - {"label": "localhost", "ip": "127.0.1"}
 xcpng_user: root
